@@ -1,0 +1,40 @@
+{
+  "project": "oracle-monitor-dashboard",
+  "description": "Oracle Database Monitoring Dashboard - SQL Developer clone",
+  "stack": {
+    "backend": "FastAPI + python-oracledb + Redis + Celery",
+    "frontend": "React 18 + TypeScript + MUI v5 + TanStack Query + Recharts",
+    "database": "Oracle 23c Free",
+    "infrastructure": "Docker Compose + Prometheus + Grafana"
+  },
+  "commands": {
+    "dev": "make dev",
+    "test": "make ci-test",
+    "lint": "make ci-lint",
+    "build": "make prod-build"
+  },
+  "key_files": {
+    "backend_main": "backend/app/main.py",
+    "backend_config": "backend/app/config.py",
+    "oracle_queries": "backend/app/core/oracle_queries.py",
+    "services_dir": "backend/app/services/",
+    "api_routes_dir": "backend/app/api/routes/",
+    "frontend_app": "frontend/src/App.tsx",
+    "frontend_pages": "frontend/src/pages/",
+    "frontend_components": "frontend/src/components/",
+    "frontend_hooks": "frontend/src/api/hooks/",
+    "theme": "frontend/src/theme/theme.ts",
+    "types": "frontend/src/types/api.ts"
+  },
+  "development_workflow": {
+    "branch_strategy": "feature/*, fix/*, hotfix/* from develop",
+    "commit_convention": "Conventional Commits (feat|fix|docs|refactor|test|chore)",
+    "pr_requirements": "Tests pass, lint passes, docs updated, 1 approval"
+  },
+  "testing": {
+    "backend": "pytest with pytest-asyncio",
+    "frontend": "vitest + React Testing Library",
+    "e2e": "Playwright",
+    "coverage_targets": "unit >80%, integration >60%"
+  }
+}

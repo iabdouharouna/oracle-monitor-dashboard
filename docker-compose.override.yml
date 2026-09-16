@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      target: development
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+      - /app/__pycache__
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+
+  celery-worker:
+    build:
+      target: development
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+      - /app/__pycache__
+    command: uv run celery -A app.celery_app worker -l DEBUG --concurrency=2
+
+  celery-beat:
+    build:
+      target: development
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+      - /app/__pycache__
+    command: uv run celery -A app.celery_app beat -l DEBUG --scheduler celery.beat.PersistentScheduler --schedule /app/celerybeat-schedule/celerybeat-schedule
+
+  frontend:
+    build:
+      target: development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+    ports: !override
+      - "3000:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5173/health"]
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+      - VITE_WS_URL=ws://localhost:8000

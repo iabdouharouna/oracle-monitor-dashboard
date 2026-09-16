@@ -1,0 +1,17 @@
+{
+  "name": "Oracle Monitor Dashboard",
+  "short_name": "Oracle Monitor",
+  "description": "Oracle Database Monitoring Dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F7FA",
+  "theme_color": "#0066CC",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

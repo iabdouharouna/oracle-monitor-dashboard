@@ -1,0 +1,980 @@
+> **Language:** English · [Version française](fr/ORACLE_QUERIES.md)
+
+# Oracle Queries Reference
+
+## Overview
+
+This document catalogs all Oracle V$ views and queries used by the Oracle Monitor Dashboard. Queries are organized by functional module and include the view sources, required privileges, and parameter descriptions.
+
+> The production SQL lives in `backend/app/core/oracle_queries.py` (40 query constants +
+> the `get_drilldown_query()` builder). AWR uses self-contained SQL inside
+> `app/services/awr_service.py`. The snippets below document the queries at a catalog level;
+> always prefer the constant definitions when changing behavior.
+
+## Required Privileges
+
+The monitoring user (`monitor`) requires these grants:
+
+```sql
+-- Core V$ views
+GRANT SELECT ON v_$instance TO monitor;
+GRANT SELECT ON v_$database TO monitor;
+GRANT SELECT ON v_$version TO monitor;
+GRANT SELECT ON v_$session TO monitor;
+GRANT SELECT ON v_$session_wait TO monitor;
+GRANT SELECT ON v_$system_event TO monitor;
+GRANT SELECT ON v_$sysstat TO monitor;
+GRANT SELECT ON v_$sys_time_model TO monitor;
+GRANT SELECT ON v_$sql TO monitor;
+GRANT SELECT ON v_$sqlstats TO monitor;
+GRANT SELECT ON v_$sql_monitor TO monitor;
+GRANT SELECT ON v_$sql_plan TO monitor;
+GRANT SELECT ON v_$active_session_history TO monitor;
+GRANT SELECT ON v_$sgastat TO monitor;
+GRANT SELECT ON v_$sgainfo TO monitor;
+GRANT SELECT ON v_$pgastat TO monitor;
+GRANT SELECT ON v_$librarycache TO monitor;
+GRANT SELECT ON v_$iostat_function TO monitor;
+GRANT SELECT ON v_$sysmetric TO monitor;
+GRANT SELECT ON v_$sysmetric_history TO monitor;
+GRANT SELECT ON v_$osstat TO monitor;
+GRANT SELECT ON v_$process TO monitor;
+GRANT SELECT ON v_$log TO monitor;
+GRANT SELECT ON v_$log_history TO monitor;
+GRANT SELECT ON v_$archived_log TO monitor;
+GRANT SELECT ON v_$tablespace TO monitor;
+GRANT SELECT ON v_$temp_space_header TO monitor;
+GRANT SELECT ON v_$parameter TO monitor;
+GRANT SELECT ON v_$resource_limit TO monitor;
+GRANT SELECT ON v_$pq_tqstat TO monitor;
+GRANT SELECT ON v_$session_longops TO monitor;
+GRANT SELECT ON v_$memory_target_advice TO monitor;
+GRANT SELECT ON v_$sga_target_advice TO monitor;
+GRANT SELECT ON v_$pga_target_advice TO monitor;
+
+-- DBA views (require Diagnostics Pack)
+GRANT SELECT ON dba_tablespaces TO monitor;
+GRANT SELECT ON dba_data_files TO monitor;
+GRANT SELECT ON dba_temp_files TO monitor;
+GRANT SELECT ON dba_free_space TO monitor;
+GRANT SELECT ON dba_segments TO monitor;
+GRANT SELECT ON dba_objects TO monitor;
+GRANT SELECT ON dba_hist_snapshot TO monitor;
+GRANT SELECT ON dba_hist_sqlstat TO monitor;
+GRANT SELECT ON dba_hist_sqltext TO monitor;
+GRANT SELECT ON dba_hist_active_sess_history TO monitor;
+GRANT SELECT ON dba_hist_system_event TO monitor;
+GRANT SELECT ON dba_hist_tbspc_space_usage TO monitor;
+GRANT SELECT ON dba_hist_sql_monitor TO monitor;
+
+-- Alert log
+GRANT SELECT ON x$dbgalertext TO monitor;
+```
+
+---
+
+## Module: Instance Viewer
+
+### 1. Database Info
+**View:** `v$instance`, `v$database`, `v$version`
+
+```sql
+SELECT 
+    i.instance_name,
+    i.version,
+    i.host_name,
+    i.platform_name,
+    TO_CHAR(i.startup_time, 'YYYY-MM-DD HH24:MI:SS') as startup_time,
+    i.log_mode,
+    d.database_role,
+    i.instance_number,
+    d.name as db_name
+FROM v$instance i
+JOIN v$database d ON 1=1
+```
+
+**Output:** Instance name, version, host, platform, startup time, log mode, database role, instance number
+
+---
+
+### 2. Instance Uptime
+**View:** `v$instance`
+
+```sql
+SELECT FLOOR((SYSDATE - startup_time) * 86400) as uptime_seconds
+FROM v$instance
+```
+
+**Output:** Uptime in seconds
+
+---
+
+### 3. Client Summary
+**View:** `v$session`
+
+```sql
+SELECT 
+    machine,
+    program,
+    module,
+    COUNT(*) as session_count
+FROM v$session
+WHERE type = 'USER'
+GROUP BY machine, program, module
+ORDER BY session_count DESC
+```
+
+**Output:** Machine, program, module, session count per group
+
+---
+
+### 4. Process Metrics
+**View:** `v$process`, `v$sysstat`
+
+```sql
+SELECT 
+    (SELECT COUNT(*) FROM v$process) as process_count,
+    (SELECT value FROM v$sysstat WHERE name = 'execute count') as exec_count,
+    (SELECT value FROM v$sysstat WHERE name = 'parse count (total)') as parse_count,
+    (SELECT value FROM v$sysstat WHERE name = 'opened cursors current') as open_cursors,
+    (SELECT value FROM v$sysstat WHERE name = 'user commits') as commits,
+    (SELECT value FROM v$sysstat WHERE name = 'user rollbacks') as rollbacks
+FROM dual
+```
+
+**Output:** Process count, execute count, parse count, open cursors, commits, rollbacks
+
+---
+
+### 5. Memory Metrics (SGA)
+**View:** `v$sgastat`, `v$sgainfo`
+
+```sql
+-- SGA breakdown
+SELECT pool, name, bytes
+FROM v$sgastat
+WHERE pool IS NOT NULL
+
+-- SGA info (configured sizes)
+SELECT name, ROUND(bytes / 1024 / 1024, 2) as size_mb
+FROM v$sgainfo
+WHERE name IN (
+    'Maximum SGA Size',
+    'Shared Pool Size',
+    'Buffer Cache Size',
+    'Large Pool Size',
+    'Java Pool Size',
+    'Streams Pool Size',
+    'Redo Buffers',
+    'Fixed SGA Size'
+)
+```
+
+**Output:** SGA pool breakdown, configured component sizes
+
+**Shared pool free (for the Memory page KPI):** `InstanceService.get_memory()` derives
+`shared_pool_free_mb` from the `v$sgastat` row `pool='shared pool'` / `name='free memory'`
+(converted bytes → MB), exposed to the frontend as `sharedPoolFreeMB` (`SGAMetrics`). The Memory
+page computes the "Shared Pool Free %" KPI as `sharedPoolFreeMB / sharedPoolMB * 100`.
+
+---
+
+### 6. PGA Metrics
+**View:** `v$pgastat`
+
+```sql
+SELECT name, value
+FROM v$pgastat
+```
+
+**Key metrics:** aggregate PGA target, total allocated, total used, cache hit %, max allocated
+
+---
+
+### 7. Buffer Cache Hit Ratio
+**View:** `v$sysstat`
+
+```sql
+SELECT 
+    (1 - (physical_reads / (consistent_gets + db_block_gets))) * 100 as hit_ratio
+FROM (
+    SELECT 
+        SUM(DECODE(name, 'physical reads', value, 0)) as physical_reads,
+        SUM(DECODE(name, 'consistent gets', value, 0)) as consistent_gets,
+        SUM(DECODE(name, 'db block gets', value, 0)) as db_block_gets
+    FROM v$sysstat
+    WHERE name IN ('physical reads', 'consistent gets', 'db block gets')
+)
+```
+
+---
+
+### 8. Library Cache Hit Ratio
+**View:** `v$librarycache`
+
+```sql
+SELECT 
+    namespace,
+    gets,
+    gethits,
+    pins,
+    pinhits,
+    reloads,
+    invalidations
+FROM v$librarycache
+```
+
+**Calculation:** `(gethits / gets) * 100` for hit ratio, `(pinhits / pins) * 100` for pin hit ratio
+
+---
+
+### 9. Tablespaces
+**View:** `dba_tablespaces`, `dba_data_files`, `dba_free_space`, `dba_temp_files`, `v$temp_space_header`
+
+```sql
+-- Permanent and Undo tablespaces
+SELECT 
+    t.tablespace_name,
+    t.contents,
+    t.status,
+    ROUND(SUM(d.bytes) / 1024 / 1024, 2) as size_mb,
+    ROUND(SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / 1024 / 1024, 2) as used_mb,
+    ROUND(SUM(NVL(f.bytes, 0)) / 1024 / 1024, 2) as free_mb,
+    ROUND(100 * SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / NULLIF(SUM(d.bytes), 0), 1) as pct_used,
+    MAX(d.autoextensible) as autoextensible,
+    MAX(d.maxbytes) / 1024 / 1024 as max_size_mb
+FROM dba_tablespaces t
+LEFT JOIN dba_data_files d ON t.tablespace_name = d.tablespace_name
+LEFT JOIN (
+    SELECT tablespace_name, SUM(bytes) as bytes
+    FROM dba_free_space
+    GROUP BY tablespace_name
+) f ON t.tablespace_name = f.tablespace_name
+WHERE t.contents IN ('PERMANENT', 'UNDO')
+GROUP BY t.tablespace_name, t.contents, t.status
+
+UNION ALL
+
+-- Temporary tablespaces
+SELECT 
+    t.tablespace_name,
+    t.contents,
+    t.status,
+    ROUND(SUM(d.bytes) / 1024 / 1024, 2) as size_mb,
+    ROUND(SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / 1024 / 1024, 2) as used_mb,
+    ROUND(SUM(NVL(f.bytes, 0)) / 1024 / 1024, 2) as free_mb,
+    ROUND(100 * SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / NULLIF(SUM(d.bytes), 0), 1) as pct_used,
+    MAX(d.autoextensible) as autoextensible,
+    MAX(d.maxbytes) / 1024 / 1024 as max_size_mb
+FROM dba_tablespaces t
+LEFT JOIN dba_temp_files d ON t.tablespace_name = d.tablespace_name
+LEFT JOIN (
+    SELECT tablespace_name, SUM(bytes_free) as bytes
+    FROM v$temp_space_header
+    GROUP BY tablespace_name
+) f ON t.tablespace_name = f.tablespace_name
+WHERE t.contents = 'TEMPORARY'
+GROUP BY t.tablespace_name, t.contents, t.status
+```
+
+---
+
+### 10. Redo Logs
+**View:** `v$log`, `v$log_history`
+
+```sql
+SELECT 
+    l.group#,
+    l.members,
+    ROUND(l.bytes / 1024 / 1024, 2) as size_mb,
+    l.status,
+    COALESCE(h.switches_per_hour, 0) as switches_per_hour
+FROM v$log l
+LEFT JOIN (
+    SELECT thread#, COUNT(*) as switches_per_hour
+    FROM v$log_history
+    WHERE first_time > SYSDATE - 1/24
+    GROUP BY thread#
+) h ON l.thread# = h.thread#
+```
+
+---
+
+### 11. Archive Log Rate
+**View:** `v$archived_log`
+
+```sql
+SELECT 
+    COUNT(*) as archives_per_hour,
+    ROUND(SUM(blocks * block_size) / 1024 / 1024, 2) as mb_per_hour
+FROM v$archived_log
+WHERE completion_time > SYSDATE - 1/24
+```
+
+---
+
+### 12. CPU Ratio
+**View:** `v$sys_time_model`, `v$osstat`
+
+```sql
+SELECT 
+    ROUND(100 * tm.db_cpu / NULLIF(os.cpu_count * 1000000, 0), 2) as db_cpu_pct,
+    ROUND(100 * tm.background_cpu / NULLIF(os.cpu_count * 1000000, 0), 2) as bg_cpu_pct,
+    tm.db_time / 1000000 as db_time_per_sec
+FROM (
+    SELECT 
+        SUM(DECODE(stat_name, 'DB CPU', value, 0)) as db_cpu,
+        SUM(DECODE(stat_name, 'background cpu time', value, 0)) as background_cpu,
+        SUM(DECODE(stat_name, 'DB time', value, 0)) as db_time
+    FROM v$sys_time_model
+) tm
+CROSS JOIN (
+    SELECT value as cpu_count FROM v$osstat WHERE stat_name = 'NUM_CPUS'
+) os
+```
+
+---
+
+### 13. Top SQL
+**View:** `v$sqlstats`
+
+```sql
+SELECT 
+    sql_id,
+    plan_hash_value,
+    executions,
+    ROUND(elapsed_time / 1e6, 2) as elapsed_time_sec,
+    ROUND(cpu_time / 1e6, 2) as cpu_time_sec,
+    buffer_gets,
+    disk_reads,
+    rows_processed,
+    SUBSTR(sql_text, 1, 200) as sql_text
+FROM v$sqlstats
+WHERE executions > 0
+ORDER BY cpu_time DESC
+FETCH FIRST :limit ROWS ONLY
+```
+
+---
+
+### 14. System Waits
+**View:** `v$system_event`
+
+```sql
+SELECT 
+    event,
+    wait_class,
+    total_waits,
+    ROUND(time_waited_micro / 1e6, 2) as time_waited_sec,
+    ROUND(time_waited_micro / NULLIF(total_waits, 0) / 1000, 2) as avg_wait_ms,
+    ROUND(100 * time_waited_micro / NULLIF(SUM(time_waited_micro) OVER (), 0), 2) as pct_db_time
+FROM v$system_event
+WHERE wait_class != 'Idle'
+ORDER BY time_waited_micro DESC
+```
+
+---
+
+## Module: Sessions
+
+### 15. Sessions List
+**View:** `v$session`
+
+```sql
+SELECT 
+    s.sid,
+    s.serial#,
+    s.username,
+    s.machine,
+    s.program,
+    s.module,
+    s.action,
+    TO_CHAR(s.logon_time, 'YYYY-MM-DD HH24:MI:SS') as logon_time,
+    s.last_call_et,
+    s.status,
+    s.state,
+    s.wait_class,
+    s.event,
+    s.seconds_in_wait,
+    s.blocking_session,
+    s.blocking_instance,
+    s.sql_id,
+    s.prev_sql_id,
+    ROUND(s.pga_alloc_mem / 1024 / 1024, 2) as pga_allocated_mb,
+    ROUND(s.pga_used_mem / 1024 / 1024, 2) as pga_used_mb
+FROM v$session s
+WHERE s.type = 'USER'
+ORDER BY s.status DESC, s.last_call_et DESC
+```
+
+---
+
+### 16. Blocking Sessions
+**View:** `v$session`, `dba_objects`
+
+```sql
+SELECT 
+    s.sid,
+    s.serial#,
+    s.username,
+    s.module,
+    s.machine,
+    s.blocking_session,
+    s.blocking_instance,
+    s.seconds_in_wait,
+    s.event,
+    o.object_name
+FROM v$session s
+LEFT JOIN dba_objects o ON s.row_wait_obj# = o.object_id
+WHERE s.blocking_session IS NOT NULL
+  AND s.type = 'USER'
+```
+
+---
+
+### 17. Long Operations
+**View:** `v$session_longops`
+
+```sql
+SELECT 
+    sid,
+    serial#,
+    opname,
+    target,
+    ROUND(sofar / NULLIF(totalwork, 0) * 100, 1) as pct_done,
+    ROUND(elapsed_seconds, 1) as elapsed_sec,
+    ROUND(time_remaining, 1) as remaining_sec,
+    message
+FROM v$session_longops
+WHERE sofar < totalwork
+  AND totalwork > 0
+ORDER BY elapsed_seconds DESC
+```
+
+---
+
+## Module: SQL Monitor
+
+### 18. Active SQL Monitor
+**View:** `v$sql_monitor`
+
+```sql
+SELECT 
+    m.sql_id,
+    m.sql_exec_id,
+    m.status,
+    ROUND(m.elapsed_time / 1e6, 2) as duration_sec,
+    ROUND(m.cpu_time / 1e6, 2) as cpu_time_sec,
+    ROUND(m.user_io_wait_time / 1e6, 2) as io_time_sec,
+    m.sql_text,
+    m.username,
+    m.module,
+    m.px_servers,
+    TO_CHAR(m.sql_exec_start, 'YYYY-MM-DD HH24:MI:SS') as start_time,
+    TO_CHAR(m.last_refresh_time, 'YYYY-MM-DD HH24:MI:SS') as last_refresh_time
+FROM v$sql_monitor m
+WHERE m.status LIKE 'EXECUTING%' 
+   OR m.last_refresh_time > SYSDATE - 1/1440
+ORDER BY m.last_refresh_time DESC
+```
+
+---
+
+### 19. SQL Monitor Detail
+**View:** `v$sql_monitor`
+
+```sql
+SELECT 
+    m.sql_id,
+    m.sql_exec_id,
+    m.plan_hash_value,
+    m.status,
+    ROUND(m.elapsed_time / 1e6, 2) as duration_sec,
+    ROUND(m.cpu_time / 1e6, 2) as cpu_time_sec,
+    ROUND(m.user_io_wait_time / 1e6, 2) as io_time_sec,
+    m.sql_text,
+    m.username,
+    m.module,
+    m.px_servers,
+    m.executions,
+    m.buffer_gets,
+    m.disk_reads,
+    m.disk_writes,
+    m.physical_read_requests,
+    m.physical_read_bytes,
+    m.physical_write_requests,
+    m.physical_write_bytes,
+    TO_CHAR(m.sql_exec_start, 'YYYY-MM-DD HH24:MI:SS') as start_time,
+    TO_CHAR(m.last_refresh_time, 'YYYY-MM-DD HH24:MI:SS') as last_refresh_time
+FROM v$sql_monitor m
+WHERE m.sql_id = :sql_id AND m.sql_exec_id = :sql_exec_id
+```
+
+---
+
+### 20. Execution Plan
+**View:** `v$sql_plan`
+
+```sql
+SELECT 
+    id,
+    parent_id,
+    operation,
+    options,
+    object_name,
+    cost,
+    cardinality,
+    bytes,
+    optimizer,
+    distribution,
+    access_predicates,
+    filter_predicates
+FROM v$sql_plan
+WHERE sql_id = :sql_id AND plan_hash_value = :plan_hash_value
+ORDER BY id
+```
+
+---
+
+### 21. Parallelism Details
+**View:** `v$pq_tqstat`
+
+```sql
+SELECT 
+    dfo_number,
+    tq_id,
+    server_type,
+    num_rows,
+    bytes,
+    open_time,
+    avg_latency
+FROM v$pq_tqstat
+WHERE dfo_number IN (
+    SELECT dfo_number FROM v$pq_tqstat WHERE sql_id = :sql_id
+)
+ORDER BY dfo_number, tq_id, server_type
+```
+
+---
+
+## Module: Performance Hub (ASH)
+
+### 22. AAS Time Series
+**View:** `v$active_session_history`
+
+```sql
+SELECT 
+    TO_CHAR(sample_time, 'YYYY-MM-DD HH24:MI:SS') as time_bucket,
+    wait_class,
+    COUNT(*) * 10 / 60 as aas,
+    COUNT(*) as samples
+FROM v$active_session_history
+WHERE sample_time > SYSDATE - :hours/24
+  AND session_type = 'FOREGROUND'
+  AND wait_class != 'Idle'
+GROUP BY TO_CHAR(sample_time, 'YYYY-MM-DD HH24:MI:SS'), wait_class
+ORDER BY time_bucket
+```
+
+**Note:** ASH samples every second. `COUNT(*) * 10 / 60` converts 10-second samples to Average Active Sessions per minute.
+
+---
+
+### 23. Top SQL by ASH
+**View:** `v$active_session_history`, `v$sql`
+
+```sql
+SELECT 
+    ash.sql_id,
+    COUNT(*) as samples,
+    ROUND(COUNT(*) * 10 / 3600, 2) as aas,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) as pct_db_time,
+    SUBSTR(st.sql_text, 1, 100) as sql_text
+FROM v$active_session_history ash
+LEFT JOIN v$sql st ON ash.sql_id = st.sql_id
+WHERE ash.sample_time > SYSDATE - :hours/24
+  AND ash.session_type = 'FOREGROUND'
+GROUP BY ash.sql_id, SUBSTR(st.sql_text, 1, 100)
+ORDER BY samples DESC
+FETCH FIRST 20 ROWS ONLY
+```
+
+---
+
+### 24. ASH Drilldown
+**View:** `v$active_session_history`
+
+```sql
+SELECT 
+    ash.{dimension} as dimension_value,
+    ash.{filter_dimension} as filter_value,
+    COUNT(*) as samples,
+    ROUND(COUNT(*) * 10 / 3600, 2) as aas,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) as pct_total
+FROM v$active_session_history ash
+WHERE ash.sample_time > SYSDATE - :hours/24
+  AND ash.session_type = 'FOREGROUND'
+  AND ash.wait_class != 'Idle'
+GROUP BY ash.{dimension}, ash.{filter_dimension}
+ORDER BY samples DESC
+FETCH FIRST 20 ROWS ONLY
+```
+
+**Valid dimensions:** `wait_class`, `event`, `sql_id`, `username`, `machine`, `module`, `action`
+
+---
+
+### 25. Wait Class Breakdown
+**View:** `v$active_session_history`
+
+```sql
+SELECT 
+    wait_class,
+    COUNT(*) as samples,
+    ROUND(COUNT(*) * 10 / 3600, 2) as aas,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) as pct_total
+FROM v$active_session_history
+WHERE sample_time > SYSDATE - :hours/24
+  AND session_type = 'FOREGROUND'
+  AND wait_class != 'Idle'
+GROUP BY wait_class
+ORDER BY samples DESC
+```
+
+---
+
+## Module: Storage (Advanced)
+
+### 26. Datafiles
+**View:** `dba_data_files`, `dba_tablespaces`
+
+```sql
+SELECT 
+    df.file_id,
+    df.file_name,
+    df.tablespace_name,
+    ROUND(df.bytes / 1024 / 1024, 2) as size_mb,
+    ROUND(df.maxbytes / 1024 / 1024, 2) as max_size_mb,
+    df.autoextensible,
+    ROUND(df.increment_by * t.block_size / 1024 / 1024, 2) as increment_mb,
+    df.status,
+    df.online_status
+FROM dba_data_files df
+JOIN dba_tablespaces t ON df.tablespace_name = t.tablespace_name
+ORDER BY df.tablespace_name, df.file_id
+```
+
+---
+
+### 27. Top Segments
+**View:** `dba_segments`
+
+```sql
+SELECT 
+    owner,
+    segment_name,
+    segment_type,
+    ROUND(bytes / 1024 / 1024, 2) as size_mb,
+    extents
+FROM dba_segments
+WHERE tablespace_name = :tablespace_name
+ORDER BY bytes DESC
+FETCH FIRST 20 ROWS ONLY
+```
+
+---
+
+### 28. Tablespace Growth Trend
+**View:** `dba_hist_tbspc_space_usage`, `v$tablespace`
+
+```sql
+SELECT 
+    TO_CHAR(rtime, 'YYYY-MM-DD') as date,
+    ROUND(space_used / 1024 / 1024, 2) as used_mb,
+    ROUND(space_allocated / 1024 / 1024, 2) as allocated_mb
+FROM dba_hist_tbspc_space_usage
+WHERE tablespace_id = (
+    SELECT ts# FROM v$tablespace WHERE name = :tablespace_name
+)
+  AND rtime > SYSDATE - 30
+ORDER BY rtime
+```
+
+**Note:** Requires Diagnostics Pack license.
+
+---
+
+## Module: Memory Advisors
+
+### 29. SGA Target Advice
+**View:** `v$sga_target_advice`
+
+```sql
+SELECT 
+    sga_size_factor,
+    estd_db_time_factor,
+    estd_physical_reads_factor
+FROM v$sga_target_advice
+```
+
+**Output:** Size factor (1.0 = current), estimated DB time factor, estimated physical reads factor
+
+---
+
+### 30. PGA Target Advice
+**View:** `v$pga_target_advice`
+
+```sql
+SELECT 
+    pga_target_factor,
+    estd_db_time_factor,
+    estd_physical_reads_factor
+FROM v$pga_target_advice
+```
+
+---
+
+### 31. Memory Target Advice (AMM)
+**View:** `v$memory_target_advice`
+
+```sql
+SELECT 
+    memory_size_factor,
+    estd_db_time_factor,
+    estd_physical_reads_factor
+FROM v$memory_target_advice
+```
+
+---
+
+## Module: Wait Events
+
+### 32. I/O Metrics
+**View:** `v$sysmetric`
+
+```sql
+SELECT metric_name, value
+FROM v$sysmetric
+WHERE metric_name IN (
+    'Physical Reads Per Sec',
+    'Physical Writes Per Sec',
+    'Physical Read Total Bytes Per Sec',
+    'Physical Write Total Bytes Per Sec',
+    'Redo Generated Per Sec',
+    'Database Time Per Sec',
+    'CPU Usage Per Sec',
+    'Logons Per Sec'
+)
+```
+
+---
+
+### 33. I/O Latency
+**View:** `v$iostat_function`
+
+```sql
+SELECT 
+    ROUND(AVG(DECODE(name, 'physical read total latency', value, NULL)), 2) as avg_read_latency_ms,
+    ROUND(AVG(DECODE(name, 'physical write total latency', value, NULL)), 2) as avg_write_latency_ms
+FROM v$iostat_function
+WHERE function_name = 'DBWR' OR function_name = 'LGWR'
+```
+
+---
+
+### 34. Session Waits
+**View:** `v$session_wait`, `v$session`
+
+```sql
+SELECT 
+    s.sid,
+    s.serial#,
+    s.username,
+    s.event,
+    s.wait_class,
+    s.state,
+    s.seconds_in_wait,
+    s.p1text as p1_text,
+    s.p1,
+    s.p2text as p2_text,
+    s.p2,
+    s.p3text as p3_text,
+    s.p3
+FROM v$session_wait s
+JOIN v$session ses ON s.sid = ses.sid
+WHERE ses.type = 'USER'
+  AND s.wait_class != 'Idle'
+ORDER BY s.seconds_in_wait DESC
+```
+
+---
+
+### 35. Metrics History
+**View:** `v$sysmetric_history`
+
+```sql
+SELECT 
+    TO_CHAR(begin_time, 'YYYY-MM-DD HH24:MI:SS') as timestamp,
+    metric_name,
+    ROUND(average, 2) as value
+FROM v$sysmetric_history
+WHERE begin_time > SYSDATE - :hours/24
+  AND metric_name IN (
+      'Physical Reads Per Sec',
+      'Physical Writes Per Sec',
+      'Database Time Per Sec',
+      'CPU Usage Per Sec'
+  )
+ORDER BY begin_time
+```
+
+---
+
+## Module: Alerts
+
+### 36. Alert Log
+**View:** `x$dbgalertext`
+
+```sql
+SELECT 
+    TO_CHAR(originating_timestamp, 'YYYY-MM-DD HH24:MI:SS') as timestamp,
+    message_level as severity,
+    message_text as message,
+    facility
+FROM x$dbgalertext
+WHERE originating_timestamp > SYSDATE - :hours/24
+ORDER BY originating_timestamp DESC
+FETCH FIRST :limit ROWS ONLY
+```
+
+---
+
+## Module: AWR (Diagnostics Pack Required)
+
+### 37. AWR Snapshots
+**View:** `dba_hist_snapshot`
+
+The snapshots query is embedded in `app/services/awr_service.py` (`SNAPSHOTS_QUERY`); the
+`duration_min` column is computed with `CAST(... AS DATE)` arithmetic because the plan columns are
+`TIMESTAMP`:
+
+```sql
+SELECT 
+    snap_id,
+    dbid,
+    instance_number,
+    TO_CHAR(begin_interval_time, 'YYYY-MM-DD HH24:MI:SS') as begin_time,
+    TO_CHAR(end_interval_time, 'YYYY-MM-DD HH24:MI:SS') as end_time,
+    ROUND((CAST(end_interval_time AS DATE) - CAST(begin_interval_time AS DATE)) * 24 * 60, 1) as duration_min,
+    TO_CHAR(startup_time, 'YYYY-MM-DD HH24:MI:SS') as startup_time
+FROM dba_hist_snapshot
+WHERE dbid = :dbid
+  AND begin_interval_time > SYSDATE - 30
+ORDER BY snap_id DESC
+```
+
+> **Why `CAST(... AS DATE)`?** `begin_interval_time`/`end_interval_time` are `TIMESTAMP`;
+> their difference is an `INTERVAL DAY TO SECOND`, and calling `ROUND()` on it raises
+> `ORA-00932`. Casting both columns to `DATE` yields a numeric difference. `dbid` is resolved at
+> runtime from `v$database` (the same instance holds CDB `dba_hist_snapshot` rows, which were
+> observed mixed with PDB rows when connected to the PDB service — filtering by `dbid` keeps the
+> list consistent). `startup_time` supports instance-start window detection.
+
+---
+
+### 38. AWR Report Generation
+**Package:** `DBMS_WORKLOAD_REPOSITORY` (`awr_report_html` / `awr_report_text`)
+
+```sql
+SELECT output
+FROM TABLE(dbms_workload_repository.awr_report_html(
+    :dbid, :instance_number, :snap_start, :snap_end, :options))
+```
+
+The report is returned as a CLOB split across rows; the service concatenates the `output` column of
+every row into a single string. Selecting a snapshot range that **crosses an instance restart**
+raises `ORA-20019` (`re-started during specified snapshot interval`); the API maps it to a friendly
+400 response. `AWRService.generate_report` validates `snap_id_end > snap_id_start` and resolves
+`dbid` from `v$database`.
+
+---
+
+### 39. Historical Top SQL
+**View:** `dba_hist_sqlstat`, `dba_hist_snapshot`, `dba_hist_sqltext`
+
+```sql
+SELECT 
+    s.snap_id,
+    st.sql_id,
+    st.plan_hash_value,
+    SUM(s.elapsed_time_delta) / 1e6 as elapsed_sec,
+    SUM(s.cpu_time_delta) / 1e6 as cpu_sec,
+    SUM(s.executions_delta) as execs,
+    SUM(s.buffer_gets_delta) as gets,
+    SUM(s.disk_reads_delta) as reads,
+    SUM(s.rows_processed_delta) as rows,
+    SUBSTR(st.sql_text, 1, 100) as sql_text
+FROM dba_hist_sqlstat s
+JOIN dba_hist_snapshot sn ON s.snap_id = sn.snap_id AND s.dbid = sn.dbid
+JOIN dba_hist_sqltext st ON s.sql_id = st.sql_id AND s.dbid = st.dbid
+WHERE sn.begin_interval_time BETWEEN :start_time AND :end_time
+  AND s.executions_delta > 0
+GROUP BY s.snap_id, st.sql_id, st.plan_hash_value, SUBSTR(st.sql_text, 1, 100)
+ORDER BY elapsed_sec DESC
+FETCH FIRST 20 ROWS ONLY
+```
+
+---
+
+## Query Performance Notes
+
+### Index Recommendations
+
+For optimal query performance, ensure these indexes exist (typically created by Oracle):
+
+| View | Key Columns |
+|------|-------------|
+| `v$session` | `type`, `status`, `username`, `machine` |
+| `v$sqlstats` | `executions`, `cpu_time`, `elapsed_time` |
+| `v$active_session_history` | `sample_time`, `session_type`, `wait_class` |
+| `v$system_event` | `wait_class`, `time_waited_micro` |
+| `dba_free_space` | `tablespace_name` |
+| `dba_segments` | `tablespace_name`, `bytes` |
+| `dba_hist_snapshot` | `begin_interval_time` |
+| `dba_hist_sqlstat` | `snap_id`, `dbid`, `executions_delta` |
+
+### Partitioning
+
+For AWR historical tables (if using partitioned tables):
+- `dba_hist_*`: Partitioned by `snap_id` or `begin_interval_time`
+- `v$active_session_history`: Circular buffer in SGA (~1 hour retention)
+
+### Query Tuning Tips
+
+1. **Use bind variables** - All queries use parameterized binds
+2. **Limit result sets** - Use `FETCH FIRST N ROWS ONLY`
+3. **Filter early** - Apply `WHERE` clauses before joins
+4. **Avoid SELECT *** - Explicit column lists
+5. **Use materialized views** - For complex aggregations (future enhancement)
+
+---
+
+## Diagnostics Pack Dependency
+
+| Feature | Requires Diagnostics Pack |
+|---------|---------------------------|
+| Real-time V$ views | No |
+| ASH (v$active_session_history) | No (1 hour retention) |
+| AWR snapshots (dba_hist_*) | **Yes** |
+| Historical SQL (dba_hist_sqlstat) | **Yes** |
+| AWR reports (`awr_report_html`/`awr_report_text`) | **Yes** |
+| Tablespace growth history | **Yes** |
+
+### Without Diagnostics Pack
+
+The dashboard gracefully degrades:
+- Real-time monitoring works fully
+- ASH limited to ~1 hour (in-memory)
+- No historical trends beyond V$SYSMETRIC_HISTORY (1 hour)
+- No AWR report generation
+- Capacity planning uses current data only

@@ -1,0 +1,42 @@
+# Yamllint configuration
+extends: default
+
+rules:
+  line-length:
+    max: 120
+    level: warning
+  indentation:
+    spaces: 2
+    level: error
+  trailing-spaces: disable
+  empty-lines:
+    max: 2
+    max-start: 0
+    max-end: 1
+  document-start:
+    level: disable
+  document-end:
+    level: disable
+  key-duplicates:
+    level: error
+  braces:
+    max-spaces-inside: 1
+    min-spaces-inside: 0
+    level: error
+  brackets:
+    max-spaces-inside: 1
+    min-spaces-inside: 0
+    level: error
+  colons:
+    max-spaces-after: 1
+    max-spaces-before: 0
+    level: error
+  commas:
+    max-spaces-after: 1
+    min-spaces-after: 1
+    level: error
+  hyphens:
+    max-spaces-after: 1
+    level: error
+  truthy:
+    level: warning

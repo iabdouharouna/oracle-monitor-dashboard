@@ -1,0 +1,127 @@
+version: 2
+updates:
+  # Python dependencies (backend)
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(deps): "
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "backend"
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    ignore:
+      - dependency-name: "python"
+        versions: ["3.12"]
+    groups:
+      backend-dev:
+        patterns:
+          - "pytest*"
+          - "ruff*"
+          - "mypy*"
+          - "pre-commit*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Node.js dependencies (frontend)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(deps): "
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "frontend"
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    groups:
+      frontend-dev:
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "prettier*"
+          - "vitest*"
+          - "@playwright/*"
+        update-types:
+          - "minor"
+          - "patch"
+      mui:
+        patterns:
+          - "@mui/*"
+          - "@emotion/*"
+        update-types:
+          - "minor"
+          - "patch"
+      charts:
+        patterns:
+          - "recharts*"
+          - "d3*"
+          - "react-force-graph*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(deps): "
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"
+    allow:
+      - dependency-type: "direct"
+    groups:
+      base-images:
+        patterns:
+          - "python:*"
+          - "node:*"
+          - "nginx:*"
+          - "redis:*"
+          - "prom/*"
+          - "grafana/*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "06:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "chore(deps): "
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

@@ -1,0 +1,99 @@
+[project]
+name = "oracle-monitor-backend"
+version = "1.0.0"
+description = "Oracle Database Monitoring Dashboard - Backend API"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "oracledb>=2.5.0",
+    "redis>=5.0.0",
+    "celery>=5.3.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt==4.0.1",
+    "python-multipart>=0.0.6",
+    "pyyaml>=6.0.1",
+    "alembic>=1.12.0",
+    "structlog>=24.1.0",
+    "tenacity>=8.2.0",
+    "pandas>=2.1.0",
+    "numpy>=1.26.0",
+    "openpyxl>=3.1.0",
+    "reportlab>=4.0.0",
+    "jinja2>=3.1.0",
+    "httpx>=0.25.0",
+    "prometheus-client>=0.19.0",
+    "prometheus-fastapi-instrumentator>=7.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.25.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.5.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.25.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+]
+
+# Limit environments to current platform to avoid Windows resolution issues
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "PL", "RUF", "SIM", "TID", "TRY"]
+ignore = ["E501", "TRY003"]
+per-file-ignores = ["tests/*:S101"]
+fixable = ["ALL"]
+unfixable = ["TID252"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+strict_optional = true
+no_implicit_optional = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*", "*/migrations/*"]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

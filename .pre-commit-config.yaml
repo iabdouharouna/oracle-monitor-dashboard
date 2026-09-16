@@ -1,0 +1,104 @@
+# Pre-commit hooks configuration
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Python formatting and linting (Ruff)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.15
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi, pyproject]
+      - id: ruff-format
+        types_or: [python, pyi, pyproject]
+
+  # Python type checking (mypy)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.1
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - types-requests
+          - types-pyyaml
+        args: [--strict, --ignore-missing-imports]
+        types_or: [python, pyi]
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: '^monitoring/grafana/dashboards/'
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: debug-logger
+      - id: detect-private-key
+      - id: detect-aws-credentials
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Secrets detection
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+
+  # Docker file linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: [--trusted-registry=ghcr.io]
+
+  # YAML linting
+  - repo: https://github.com/pre-commit/mirrors-yamllint
+    rev: v1.33.0
+    hooks:
+      - id: yamllint
+        args: [-c=.yamllint.yaml]
+        files: '\.(yaml|yml)$'
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        args: [--config=.markdownlint.json]
+        files: '\.(md)$'
+
+  # Python import sorting (via ruff)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.15
+    hooks:
+      - id: ruff
+        name: ruff-import-sort
+        args: [--select=I, --fix]
+        types_or: [python, pyi]
+
+  # Check for TODO/FIXME comments
+  - repo: local
+    hooks:
+      - id: no-todo-comments
+        name: Check for TODO/FIXME comments
+        entry: bash -c 'if git diff --cached --name-only | xargs grep -l "TODO\|FIXME" 2>/dev/null; then echo "WARNING: Found TODO/FIXME comments in staged files"; exit 1; fi'
+        language: system
+        stages: [commit]
+        verbose: true
+
+  # Check for large files
+  - repo: local
+    hooks:
+      - id: check-large-files
+        name: Check for large files
+        entry: bash -c 'find . -type f -size +5M -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.venv/*" | head -20'
+        language: system
+        stages: [commit]
+        verbose: true
+        always_run: true
+        pass_filenames: false

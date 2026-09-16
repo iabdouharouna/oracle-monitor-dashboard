@@ -1,0 +1,35 @@
+# Code Owners for Oracle Monitor Dashboard
+
+# Global owners
+* @maintainer1 @maintainer2
+
+# Backend
+/backend/ @backend-team
+/backend/app/api/ @backend-team @api-team
+/backend/app/core/ @backend-team @database-team
+/backend/app/services/ @backend-team @database-team
+/backend/app/tasks/ @backend-team @devops-team
+/backend/tests/ @backend-team @qa-team
+
+# Frontend
+/frontend/ @frontend-team
+/frontend/src/pages/ @frontend-team @ux-team
+/frontend/src/components/ @frontend-team @ux-team
+/frontend/src/api/ @frontend-team @backend-team
+/frontend/src/theme/ @ux-team
+/frontend/tests/ @frontend-team @qa-team
+
+# Documentation
+/docs/ @docs-team @backend-team @frontend-team
+
+# Infrastructure
+/docker-compose*.yml @devops-team
+/.github/workflows/ @devops-team
+/.github/dependabot.yml @devops-team
+/monitoring/ @devops-team
+/scripts/ @database-team @devops-team
+
+# Configuration
+/.env.example @devops-team @backend-team
+/Makefile @devops-team
+/README.md @docs-team
