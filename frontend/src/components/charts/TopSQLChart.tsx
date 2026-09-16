@@ -8,6 +8,7 @@ interface TopSQLChartProps {
     cpuTimeSec: number; 
     elapsedTimeSec: number;
     executions: number;
+    bufferGets?: number;
   }>;
   height?: number;
   metric?: 'cpuTimeSec' | 'elapsedTimeSec' | 'executions' | 'bufferGets';
@@ -35,10 +36,10 @@ export const TopSQLChart: React.FC<TopSQLChartProps> = ({
 
   const chartData = data
     .slice(0, 10)
-    .map((d, i) => ({
+    .map((d) => ({
       ...d,
       label: `${d.sqlId.substring(0, 8)}...`,
-      value: d[metric],
+      value: (d[metric] as number) ?? 0,
     }))
     .reverse();
 

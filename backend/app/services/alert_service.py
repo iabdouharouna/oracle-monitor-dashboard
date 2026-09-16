@@ -153,3 +153,44 @@ class AlertService:
         merged = dict(AlertService.get_threshold_config())
         merged.update(persisted)
         return merged
+
+    @staticmethod
+    async def record_triggered(alerts: List[Dict[str, Any]]) -> None:
+        """Persist triggered alerts to Redis for later history queries."""
+        from app.redis import redis_client
+        from datetime import datetime, timezone
+
+        if not alerts:
+            return
+        try:
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            for alert in alerts:
+                payload = json.dumps(
+                    {**alert, "timestamp": now, "acknowledged": False}, ensure_ascii=False
+                )
+                await redis_client.client.rpush("alerts:history", payload)
+            await redis_client.client.ltrim("alerts:history", -1000, -1)
+        except Exception:
+            logger.exception("Failed to record triggered alerts")
+
+    @staticmethod
+    async def get_history(limit: int = 100) -> List[Dict[str, Any]]:
+        """Return persisted alert history from Redis (most recent first)."""
+        from app.redis import redis_client
+
+        try:
+            raw = await redis_client.client.lrange("alerts:history", -limit, -1)
+            alerts = []
+            for item in reversed(raw):
+                if isinstance(item, bytes):
+                    item = item.decode("utf-8")
+                try:
+                    alert = json.loads(item)
+                except (ValueError, TypeError):
+                    continue
+                alert["id"] = str(len(alerts) + 1)
+                alerts.append(alert)
+            return alerts
+        except Exception:
+            logger.exception("Failed to get alert history")
+            return []

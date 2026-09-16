@@ -19,15 +19,14 @@ interface UseAutoRefreshReturn {
 export function useAutoRefresh(options: UseAutoRefreshOptions = {}): UseAutoRefreshReturn {
   const { defaultInterval = 30, enabled = true, onRefresh } = options;
   
-  const [interval, setIntervalState] = useState(defaultInterval);
+  const [interval, setIntervalValue] = useState(defaultInterval);
   const [isEnabled, setIsEnabled] = useState(enabled);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const onRefreshRef = React.useRef(onRefresh);
   onRefreshRef.current = onRefresh;
 
   const setInterval = useCallback((newInterval: number) => {
-    setIntervalState(newInterval);
+    setIntervalValue(newInterval);
   }, []);
 
   const toggleEnabled = useCallback(() => {
@@ -35,7 +34,6 @@ export function useAutoRefresh(options: UseAutoRefreshOptions = {}): UseAutoRefr
   }, []);
 
   const triggerRefresh = useCallback(() => {
-    setRefreshTrigger(prev => prev + 1);
     setLastRefresh(new Date());
     if (onRefreshRef.current) onRefreshRef.current();
   }, []);
@@ -44,11 +42,11 @@ export function useAutoRefresh(options: UseAutoRefreshOptions = {}): UseAutoRefr
   useEffect(() => {
     if (!isEnabled || interval <= 0) return;
 
-    const timer = setInterval(() => {
+    const timer = window.setInterval(() => {
       triggerRefresh();
     }, interval * 1000);
 
-    return () => clearInterval(timer);
+    return () => window.clearInterval(timer);
   }, [isEnabled, interval, triggerRefresh]);
 
   const nextRefresh = isEnabled && interval > 0 && lastRefresh

@@ -3,7 +3,7 @@ import { Card, CardContent, Typography, Box } from '@mui/material';
 
 interface KPICardProps {
   title: string;
-  value: string | number;
+  value?: string | number | null;
   unit?: string;
   trend?: number;
   trendLabel?: string;
@@ -18,7 +18,6 @@ export const KPICard: React.FC<KPICardProps> = ({
   unit = '',
   trend,
   trendLabel,
-  color = 'primary',
   icon,
   subtext,
 }) => {
@@ -50,7 +49,7 @@ export const KPICard: React.FC<KPICardProps> = ({
                 sx={{ display: 'flex', alignItems: 'center', gap: 0.3, fontWeight: 500 }}
               >
                 {trend >= 0 ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}%
-                {trendLabel && <span sx={{ color: 'text.secondary', fontWeight: 400 }}>{trendLabel}</span>}
+                {trendLabel && <Typography component="span" variant="caption" sx={{ color: 'text.secondary', fontWeight: 400 }}>{trendLabel}</Typography>}
               </Typography>
             )}
             {subtext && (

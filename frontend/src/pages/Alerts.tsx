@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper, Grid, Tab, Button, FormControl, InputLabel, Select, MenuItem, Chip, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar } from '@mui/material';
-import { TabContext, TabList, TabPanel } from '@mui/lab';
+import { Box, Typography, Paper, Grid, Button, Chip, TextField, Alert, Snackbar } from '@mui/material';
 import { useAlertLog, useThresholds, useCheckThresholds, useUpdateThresholds } from '../api/hooks/useAlerts';
-import { DataTable, LoadingSkeleton, ErrorDisplay, TimeRangeSelector, KPICard } from '../components/common';
-import { Warning, Error as ErrorIcon, Info, Settings, Edit, Refresh } from '@mui/icons-material';
-import { format } from 'date-fns';
+import { DataTable, LoadingSkeleton, TimeRangeSelector } from '../components/common';
+import { Warning, Error as ErrorIcon, Settings, Edit, Refresh } from '@mui/icons-material';
 
 export const Alerts: React.FC = () => {
   const [timeRange, setTimeRange] = useState('24h');
@@ -72,7 +70,7 @@ export const Alerts: React.FC = () => {
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
-          <Button variant="outlined" onClick={refetchAlerts} startIcon={<Refresh />}>Refresh</Button>
+          <Button variant="outlined" onClick={() => refetchAlerts()} startIcon={<Refresh />}>Refresh</Button>
         </Box>
       </Box>
 

@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Tab, Box, Typography, Paper, Grid } from '@mui/material';
 import { TabContext, TabList, TabPanel } from '@mui/lab';
 import { useAllInstanceData } from '../api/hooks/useInstance';
-import { KPICard, GaugeChart, DataTable, LoadingSkeleton } from '../components/common';
-import { MemoryBreakdown, CPURatioChart, TopSQLChart } from '../components/charts';
-import { Dns as Database, People, Speed, Memory, Storage, Speed as SpeedIcon, Code, CheckCircle } from '@mui/icons-material';
+import { KPICard, DataTable, LoadingSkeleton } from '../components/common';
+import { MemoryBreakdown, CPURatioChart } from '../components/charts';
+import { Dns as Database, People, Memory, Storage, Speed as SpeedIcon, Code, CheckCircle } from '@mui/icons-material';
 
 export const InstanceViewer: React.FC = () => {
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState('0');
   const { data, isLoading, error } = useAllInstanceData();
 
   if (isLoading && !data) {
@@ -36,7 +36,7 @@ export const InstanceViewer: React.FC = () => {
       </Box>
 
       <TabContext value={tab}>
-        <TabList sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} onChange={(_, v) => setTab(v)}>
+        <TabList sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} onChange={(_, v) => setTab(String(v))}>
           <Tab label="Database" icon={<Database />} />
           <Tab label="Clients" icon={<People />} />
           <Tab label="Processes" icon={<SpeedIcon />} />
@@ -47,7 +47,7 @@ export const InstanceViewer: React.FC = () => {
         </TabList>
 
         {/* Database Tab */}
-        <TabPanel value={0} sx={{ p: 0 }}>
+        <TabPanel value="0" sx={{ p: 0 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6} md={3}>
               <KPICard title="Database Name" value={db?.name} icon={<Database />} />
@@ -83,7 +83,7 @@ export const InstanceViewer: React.FC = () => {
         </TabPanel>
 
         {/* Clients Tab */}
-        <TabPanel value={1} sx={{ p: 0 }}>
+        <TabPanel value="1" sx={{ p: 0 }}>
           <DataTable
             rows={clients.map((c, i) => ({ id: i, ...c }))}
             columns={[
@@ -96,7 +96,7 @@ export const InstanceViewer: React.FC = () => {
         </TabPanel>
 
         {/* Processes Tab */}
-        <TabPanel value={2} sx={{ p: 0 }}>
+        <TabPanel value="2" sx={{ p: 0 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6} md={3}>
               <KPICard title="Process Count" value={processes?.processCount || 0} icon={<SpeedIcon />} />
@@ -120,14 +120,14 @@ export const InstanceViewer: React.FC = () => {
         </TabPanel>
 
         {/* Memory Tab */}
-        <TabPanel value={3} sx={{ p: 0 }}>
+        <TabPanel value="3" sx={{ p: 0 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
               <Paper sx={{ p: 2, height: '100%' }}>
                 <Typography variant="h6" sx={{ mb: 2 }}>Memory Breakdown</Typography>
                 <MemoryBreakdown 
-                  sga={memory?.sga || {}} 
-                  pga={memory?.pga || {}} 
+                  sga={memory?.sga ?? { bufferCacheMB: 0, sharedPoolMB: 0, largePoolMB: 0, javaPoolMB: 0, streamsPoolMB: 0, redoLogBufferMB: 0 }} 
+                  pga={memory?.pga ?? { totalAllocatedMB: 0, totalUsedMB: 0 }} 
                 />
               </Paper>
             </Grid>
@@ -157,7 +157,7 @@ export const InstanceViewer: React.FC = () => {
         </TabPanel>
 
         {/* Storage Tab */}
-        <TabPanel value={4} sx={{ p: 0 }}>
+        <TabPanel value="4" sx={{ p: 0 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
               <Paper sx={{ p: 2, height: '100%' }}>
@@ -196,7 +196,7 @@ export const InstanceViewer: React.FC = () => {
         </TabPanel>
 
         {/* CPU Ratio Tab */}
-        <TabPanel value={5} sx={{ p: 0 }}>
+        <TabPanel value="5" sx={{ p: 0 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={8}>
               <Paper sx={{ p: 2, height: '100%' }}>
@@ -226,7 +226,7 @@ export const InstanceViewer: React.FC = () => {
         </TabPanel>
 
         {/* Top SQL Tab */}
-        <TabPanel value={6} sx={{ p: 0 }}>
+        <TabPanel value="6" sx={{ p: 0 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Top SQL by CPU Time</Typography>
             <DataTable

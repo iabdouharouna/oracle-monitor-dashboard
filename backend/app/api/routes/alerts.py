@@ -37,6 +37,15 @@ async def update_thresholds(thresholds: dict):
         raise
 
 
+@router.get("/history")
+async def get_alert_history(limit: int = Query(100, ge=1, le=1000)):
+    try:
+        return await AlertService.get_history(limit)
+    except Exception as e:
+        logger.error("Failed to get alert history", error=str(e))
+        raise
+
+
 @router.get("/check")
 async def check_thresholds():
     try:

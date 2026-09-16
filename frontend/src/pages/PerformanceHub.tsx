@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Grid, FormControl, InputLabel, Select, MenuItem, Divider } from '@mui/material';
+import { Box, Typography, Paper, Grid, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { useASHAAS, useASHWaitClasses, useASHDDrilldown, useASHTopSQL } from '../api/hooks/usePerformance';
-import { AASChart, WaitClassChart, DataTable, LoadingSkeleton, TimeRangeSelector } from '../components/common';
-import { TimeRangeSelector as TimeRange } from '../components/common';
+import { AASChart, WaitClassChart, DataTable, TimeRangeSelector } from '../components/common';
 
 const DIMENSIONS = [
   { value: 'wait_class', label: 'Wait Class' },
@@ -22,8 +21,8 @@ export const PerformanceHub: React.FC = () => {
 
   const hours = { '5m': 5/60, '15m': 15/60, '1h': 1, '6h': 6, '24h': 24 }[timeRange] || 1;
 
-  const { data: aasData, isLoading: aasLoading } = useASHAAS(hours, dimension);
-  const { data: waitClasses, isLoading: wcLoading } = useASHWaitClasses(hours);
+  const { data: aasData } = useASHAAS(hours, dimension);
+  const { data: waitClasses } = useASHWaitClasses(hours);
   const { data: drilldown, isLoading: ddLoading } = useASHDDrilldown(dimension, filterDimension, hours);
   const { data: topSql, isLoading: topSqlLoading } = useASHTopSQL(hours);
 

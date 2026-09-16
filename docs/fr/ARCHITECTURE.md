@@ -52,7 +52,7 @@ Le Oracle Monitor Dashboard est une application full-stack construite avec un **
 | Validation | Pydantic | 2.5+ | Validation des données, paramètres |
 | Auth | python-jose + passlib | 3.3+/1.7+ | JWT, bcrypt |
 | Logging | structlog | 24.1+ | Journalisation structurée en JSON |
-| Metrics | prometheus-client | 0.19+ | Exposition Prometheus |
+| Metrics | psutil | 5.9+ | CPU/RAM/disque hôte (historique par série dans Redis) |
 
 ### Frontend
 | Composant | Technologie | Version | Rôle |
@@ -75,7 +75,7 @@ Le Oracle Monitor Dashboard est une application full-stack construite avec un **
 | Containerization | Docker Compose | Orchestration multi-conteneurs |
 | Oracle DB | gvenzl/oracle-free:23-slim | Oracle 23c gratuit |
 | Reverse Proxy | Nginx | Fichiers statiques, proxy API |
-| Monitoring | Prometheus + Grafana | Collecte des métriques & visualisation |
+| Monitoring | Interne (historique Redis + page Monitoring) | Collecte des métriques & visualisation |
 | CI/CD | GitHub Actions (planifié) | Tests & déploiement automatisés |
 
 ## Architecture du backend
@@ -415,24 +415,27 @@ BCRYPT_ROUNDS = 12
 
 ## Supervision et observabilité
 
-### Métriques applicatives (Prometheus)
+### Métriques applicatives
+
+Les métriques sont collectées en-processus (API) et via Celery (DB + hôte), stockées
+dans des séries temporelles Redis (`metrics:series:<name>`) et exposées via :
+
+| Point de terminaison | Description |
+|----------------------|-------------|
+| `GET /api/v1/metrics/history` | Données de séries temporelles (heures/pas configurables) |
+| `GET /api/v1/metrics/available` | Liste des noms de métriques collectées |
+| `GET /api/v1/metrics/middleware` | Middleware HTTP (nombre de requêtes, latence, erreurs) |
 
 ```
-# Métriques HTTP
-http_requests_total{method, endpoint, status}
-http_request_duration_seconds{method, endpoint}
-http_requests_in_progress
+# Métriques DB
+db_cpu_pct, db_sessions_total, db_sessions_active, db_storage_pct
+db_io_read_mbps, db_io_write_mbps
 
-# Métriques métier
-oracle_monitor_active_sessions
-oracle_monitor_tablespace_usage_percent{tablespace}
-oracle_monitor_cpu_usage_percent
-oracle_monitor_alert_total{severity}
+# Métriques API
+api_requests_total, api_latency_avg_ms, api_errors_total
 
-# Métriques système
-process_cpu_seconds_total
-process_resident_memory_bytes
-process_open_fds
+# Métriques hôte
+host_cpu_pct, host_ram_pct, host_ram_used_mb, host_disk_pct
 ```
 
 ### Contrôles de santé
@@ -440,7 +443,7 @@ process_open_fds
 | Point de terminaison | Vérifications |
 |----------------------|---------------|
 | `GET /health` | Connectivité Oracle, connectivité Redis |
-| `GET /metrics` | Exposition des métriques Prometheus |
+| `GET /api/v1/metrics/history` | Requête de séries temporelles |
 | Docker HEALTHCHECK | Vérification de vie au niveau conteneur |
 
 ### Journalisation
@@ -462,7 +465,7 @@ process_open_fds
 |-------------|-----------|-------------|
 | Base Oracle en panne | Contrôle de santé, timeout de requête | Disjoncteur, données en cache, alerte |
 | Redis en panne | Erreur de connexion | Dégradation contrôlée (pas de cache) |
-| Latence de requête élevée | Alerte Prometheus | Optimisation des requêtes, revue des index |
+| Latence de requête élevée | Alerte seuil (Celery) | Optimisation des requêtes, revue des index |
 | Fuite mémoire | Redémarrage du conteneur | Limites de ressources, profilage |
 | Expiration du jeton d'authentification | Réponse 401 | Rafraîchissement automatique avec le jeton de rafraîchissement |
 

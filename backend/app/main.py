@@ -1,14 +1,16 @@
+import time
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from prometheus_fastapi_instrumentator import Instrumentator
 import structlog
 
 from app.config import settings
 from app.lifespan import lifespan
 from app.database import set_active_database
+from app.api_metrics import api_metrics_buffer
 from app.api.routes import auth, overview, instance, performance, sql_monitor
-from app.api.routes import sessions, storage, memory, waits, alerts, exports, databases
+from app.api.routes import sessions, storage, memory, waits, alerts, exports, databases, metrics
 from app.api import websocket
 from app.core.exceptions import (
     OracleMonitorException,
@@ -48,8 +50,14 @@ def create_app() -> FastAPI:
             set_active_database(db_header.strip())
         return await call_next(request)
     
-    if settings.PROMETHEUS_METRICS_ENABLED:
-        Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+    if settings.METRICS_ENABLED:
+        @app.middleware("http")
+        async def api_metrics_middleware(request: Request, call_next):
+            start = time.time()
+            response = await call_next(request)
+            duration_ms = (time.time() - start) * 1000
+            api_metrics_buffer.record(duration_ms, response.status_code)
+            return response
     
     @app.exception_handler(OracleMonitorException)
     async def oracle_monitor_exception_handler(request: Request, exc: OracleMonitorException):
@@ -106,6 +114,8 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, prefix=f"{settings.API_PREFIX}/alerts", tags=["Alerts"])
     app.include_router(databases.router, prefix=f"{settings.API_PREFIX}/databases", tags=["Databases"])
     app.include_router(exports.router, prefix=f"{settings.API_PREFIX}/exports", tags=["Exports"])
+    if settings.METRICS_ENABLED:
+        app.include_router(metrics.router, prefix=f"{settings.API_PREFIX}/metrics", tags=["Metrics"])
     app.include_router(websocket.router, tags=["WebSocket"])
     
     return app

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Box } from '@mui/material';
 import { useAuth } from './context/AuthContext';
 import { PageLayout } from './components/layout/PageLayout';
 import { AddDatabaseDialog } from './components/common/AddDatabaseDialog';
@@ -18,7 +19,8 @@ import {
   LiveMonitor,
   Alerts, 
   Settings, 
-  Reports 
+  Reports,
+  Monitoring,
 } from './pages';
 
 const ProtectedRoute: React.FC = () => {
@@ -26,11 +28,9 @@ const ProtectedRoute: React.FC = () => {
 
   if (isLoading) {
     return (
-      <PageLayout>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-          Loading...
-        </div>
-      </PageLayout>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        Loading...
+      </Box>
     );
   }
 
@@ -100,6 +100,7 @@ const App: React.FC = () => {
           <Route path="/live" element={<LiveMonitor />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/monitoring" element={<Monitoring />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Route>

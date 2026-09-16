@@ -155,10 +155,12 @@ class DatabaseInfo(CamelModel):
     version: str
     host: str
     platform: str
+    status: str
     startup_time: str
     log_mode: str
     role: str
     instance_number: int
+    uptime_seconds: int
 
 
 class ClientSummary(CamelModel):

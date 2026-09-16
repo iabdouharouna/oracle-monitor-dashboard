@@ -1,4 +1,4 @@
-import { format, parseISO, addHours, subHours, startOfDay, endOfDay, isValid } from 'date-fns';
+import { format, parseISO, subHours, isValid } from 'date-fns';
 
 export function formatDateTime(date: string | Date, pattern: string = 'yyyy-MM-dd HH:mm:ss'): string {
   const d = typeof date === 'string' ? parseISO(date) : date;
@@ -50,14 +50,6 @@ export function getTimeRangeStart(range: string): Date {
 
 export function getTimeRangeEnd(): Date {
   return new Date();
-}
-
-export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(0)}s`;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return `${hours}h ${minutes}m`;
 }
 
 export function parseDuration(str: string): number {

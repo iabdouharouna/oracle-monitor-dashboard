@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Grid, Tab, Button } from '@mui/material';
+import { Box, Typography, Paper, Grid, Tab } from '@mui/material';
 import { TabContext, TabList, TabPanel } from '@mui/lab';
-import { useSGAAdvice, usePGAAdvice, useMemoryTargetAdvice, useAllMemoryAdvice } from '../api/hooks/useMemory';
+import { useAllMemoryAdvice } from '../api/hooks/useMemory';
 import { useMemory } from '../api/hooks/useInstance';
 import { MemoryBreakdown, DataTable, KPICard, LoadingSkeleton } from '../components/common';
 import { Memory as MemoryIcon, TrendingUp, Assessment, Settings } from '@mui/icons-material';
 
 export const Memory: React.FC = () => {
-  const [tab, setTab] = useState(0);
-  const { data: sgaAdvice } = useSGAAdvice();
-  const { data: pgaAdvice } = usePGAAdvice();
-  const { data: memTargetAdvice } = useMemoryTargetAdvice();
+  const [tab, setTab] = useState('0');
   const { data: allAdvice, isLoading } = useAllMemoryAdvice();
   const { data: memory } = useMemory();
 
@@ -82,13 +79,13 @@ export const Memory: React.FC = () => {
 
       {/* Advisors */}
       <TabContext value={tab}>
-        <TabList sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} onChange={(_, v) => setTab(v)}>
+        <TabList sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} onChange={(_, v) => setTab(String(v))}>
           <Tab label="SGA Advisor" icon={<Assessment />} />
           <Tab label="PGA Advisor" icon={<Assessment />} />
           <Tab label="Memory Target Advisor" icon={<Assessment />} />
         </TabList>
 
-        <TabPanel value={0} sx={{ p: 0 }}>
+        <TabPanel value="0" sx={{ p: 0 }}>
           {sga && (
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" sx={{ mb: 2 }}>SGA Target Advisor</Typography>
@@ -108,7 +105,7 @@ export const Memory: React.FC = () => {
           )}
         </TabPanel>
 
-        <TabPanel value={1} sx={{ p: 0 }}>
+        <TabPanel value="1" sx={{ p: 0 }}>
           {pga && (
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" sx={{ mb: 2 }}>PGA Target Advisor</Typography>
@@ -128,7 +125,7 @@ export const Memory: React.FC = () => {
           )}
         </TabPanel>
 
-        <TabPanel value={2} sx={{ p: 0 }}>
+        <TabPanel value="2" sx={{ p: 0 }}>
           {memTarget && (
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" sx={{ mb: 2 }}>Memory Target Advisor (AMM)</Typography>

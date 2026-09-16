@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, Box, Typography, IconButton, useMediaQuery, useTheme } from '@mui/material';
-import { Menu, ChevronLeft, Dashboard, Storage, Memory, Speed, BugReport, Terminal, Settings, Assessment, Timeline, MonitorHeart } from '@mui/icons-material';
-import { useLocation, NavLink, Outlet } from 'react-router-dom';
+import { Menu, ChevronLeft, Dashboard, Storage, Memory, Speed, BugReport, Terminal, Settings, Assessment, Timeline, MonitorHeart, ShowChart } from '@mui/icons-material';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const menuItems = [
@@ -15,6 +15,7 @@ const menuItems = [
   { path: '/waits', label: 'Wait Events', icon: <Timeline /> },
   { path: '/live', label: 'Live Monitor', icon: <MonitorHeart /> },
   { path: '/alerts', label: 'Alerts', icon: <BugReport /> },
+  { path: '/monitoring', label: 'Monitoring', icon: <ShowChart /> },
   { path: '/reports', label: 'Reports', icon: <Assessment /> },
   { path: '/settings', label: 'Settings', icon: <Settings /> },
 ];
@@ -23,7 +24,6 @@ export const Sidebar: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
-  const location = useLocation();
   const { user, logout } = useAuth();
 
   const handleDrawerToggle = () => {

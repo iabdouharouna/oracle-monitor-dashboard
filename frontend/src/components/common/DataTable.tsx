@@ -1,7 +1,10 @@
-import React from 'react';
-import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
-import { Chip, IconButton, Tooltip } from '@mui/material';
-import { Delete, Visibility, ContentCopy } from '@mui/icons-material';
+import {
+  DataGrid,
+  GridColDef,
+  GridRowParams,
+  GridRowSelectionModel,
+} from '@mui/x-data-grid';
+import { Chip } from '@mui/material';
 
 interface DataTableProps<T> {
   rows: T[];
@@ -11,14 +14,13 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   pageSize?: number;
   pageSizeOptions?: number[];
-  disableSelection?: boolean;
   autoHeight?: boolean;
   maxHeight?: number;
   checkboxSelection?: boolean;
   onSelectionChange?: (ids: (string | number)[]) => void;
 }
 
-export function DataTable<T extends { id?: string | number }>({
+export function DataTable<T extends object>({
   rows,
   columns,
   loading = false,
@@ -26,21 +28,22 @@ export function DataTable<T extends { id?: string | number }>({
   onRowClick,
   pageSize = 25,
   pageSizeOptions = [10, 25, 50, 100],
-  disableSelection = false,
   autoHeight = false,
   maxHeight = 500,
   checkboxSelection = false,
   onSelectionChange,
 }: DataTableProps<T>) {
-  const handleRowClick = (params: GridRenderCellParams<T>) => {
-    if (onRowClick && !params.event?.target.closest('button')) {
+  const handleRowClick = (params: GridRowParams<T>) => {
+    if (onRowClick) {
       onRowClick(params.row);
     }
   };
 
-  const defaultColumns: GridColDef[] = [
-    { field: 'id', headerName: 'ID', width: 80, hide: true },
-  ];
+  const handleSelectionChange = (selection: GridRowSelectionModel) => {
+    if (onSelectionChange) {
+      onSelectionChange(selection as (string | number)[]);
+    }
+  };
 
   return (
     <div style={{ height: maxHeight, width: '100%' }}>
@@ -53,17 +56,16 @@ export function DataTable<T extends { id?: string | number }>({
         rows={rows}
         columns={columns}
         loading={loading}
-        pageSize={pageSize}
-        rowsPerPageOptions={pageSizeOptions}
-        disableSelection={disableSelection}
-        checkboxSelection={checkboxSelection}
-        onSelectionModelChange={onSelectionChange}
-        autoHeight={autoHeight}
-        onRowClick={handleRowClick}
-        getRowId={(row) => String(row.id || Math.random())}
+        pageSizeOptions={pageSizeOptions}
         initialState={{
           pagination: { paginationModel: { pageSize } },
         }}
+        disableRowSelectionOnClick={!checkboxSelection}
+        checkboxSelection={checkboxSelection}
+        onRowSelectionModelChange={handleSelectionChange}
+        autoHeight={autoHeight}
+        onRowClick={handleRowClick}
+        getRowId={(row) => String((row as { id?: unknown }).id ?? Math.random())}
         sx={{ border: '1px solid #E1E4E8', borderRadius: 4 }}
         slotProps={{
           baseButton: { sx: { textTransform: 'none' } },

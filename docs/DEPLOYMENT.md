@@ -45,7 +45,6 @@ cp .env.example .env
 ```bash
 ORACLE_PASSWORD=secure_password_here
 SECRET_KEY=your-32-character-secret-key-minimum
-GRAFANA_PASSWORD=admin_secure_password
 ```
 
 ### 3. Start Development Environment
@@ -71,8 +70,7 @@ make dev-logs
 # Frontend: http://localhost:3000
 # Backend API: http://localhost:8000
 # API Docs: http://localhost:8000/docs
-# Grafana: http://localhost:3001 (admin/admin)
-# Prometheus: http://localhost:9090
+# Monitoring: http://localhost:3000/monitoring
 ```
 
 ---
@@ -112,15 +110,6 @@ services:
     build: ./frontend (production target)
     ports: [3000:80]
     depends_on: [backend]
-
-  prometheus:      # Metrics collection
-    ports: [9090]
-    volumes: [prometheus_data]
-
-  grafana:         # Dashboards
-    ports: [3001]
-    volumes: [grafana_data]
-    provisioning: dashboards, datasources
 ```
 
 ### Development Override (`docker-compose.override.yml`)
@@ -233,15 +222,13 @@ celery -A app.celery_app beat -l INFO --scheduler celery.beat.PersistentSchedule
 
 ### Monitoring Stack
 
-**Prometheus:**
-- Scrapes backend `/metrics` every 15s
-- Retention: 15 days (configurable)
-- Storage: `prometheus_data` volume
-
-**Grafana:**
-- Pre-provisioned Prometheus datasource
-- Dashboard provisioning from `monitoring/grafana/dashboards/`
-- Admin user from `GRAFANA_PASSWORD` env var
+Metrics are collected internally and stored in Redis:
+- **DB metrics** collected by Celery (`collect_all_metrics`), every 30s
+- **API metrics** accumulated in-process and flushed every `METRICS_FLUSH_INTERVAL` (30s)
+- **Host metrics** (CPU/RAM/disk via psutil) collected alongside DB metrics
+- Retention: 7 days (`METRICS_RETENTION_HOURS`), up to 30k points per series
+- Exposed via `GET /api/v1/metrics/history` and `GET /api/v1/metrics/available`
+- Triggered alerts persisted to Redis (`alerts:history`) and shown in the Monitoring page
 
 ---
 
@@ -259,7 +246,6 @@ git clone <repo-url> .
 
 # Generate secure secrets
 openssl rand -base64 32  # For SECRET_KEY
-openssl rand -base64 32  # For GRAFANA_PASSWORD
 openssl rand -base64 32  # For ORACLE_PASSWORD
 ```
 
@@ -285,9 +271,6 @@ REDIS_URL=redis://redis:6379/0
 HAS_DIAGNOSTICS_PACK=true
 DEBUG=false
 LOG_LEVEL=INFO
-
-# Grafana
-GRAFANA_PASSWORD=your_grafana_password
 
 # Frontend (build time)
 VITE_API_URL=https://your-domain.com
@@ -516,54 +499,27 @@ docker run --rm \
 
 ## Monitoring & Alerting
 
-### Prometheus Rules
+### Internal Metrics
 
-Create `monitoring/prometheus/rules/oracle-monitor.yml`:
+Metrics are collected, stored and visualized entirely inside the application
+(no external Prometheus/Grafana dependency):
 
-```yaml
-groups:
-  - name: oracle-monitor
-    rules:
-      - alert: OracleDown
-        expr: up{job="oracle-monitor-backend"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Oracle Monitor backend is down"
+- **DB metrics** (`collect_all_metrics` Celery task): `db_cpu_pct`,
+  `db_sessions_total`, `db_sessions_active`, `db_storage_pct`, `db_io_read_mbps`,
+  `db_io_write_mbps`
+- **API metrics** (in-process buffer, flushed every `METRICS_FLUSH_INTERVAL`):
+  `api_requests_total`, `api_latency_avg_ms`, `api_errors_total`
+- **Host metrics** (psutil): `host_cpu_pct`, `host_ram_pct`, `host_ram_used_mb`,
+  `host_disk_pct`
 
-      - alert: HighTablespaceUsage
-        expr: oracle_monitor_tablespace_usage_percent > 90
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Tablespace {{ $labels.tablespace }} > 90%"
+All series live in Redis for 7 days by default (`METRICS_RETENTION_HOURS`) and are
+available through the UI in the **Monitoring** page.
 
-      - alert: HighCPUUsage
-        expr: oracle_monitor_cpu_usage_percent > 90
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Database CPU > 90%"
+### Threshold Alerts
 
-      - alert: HighSessionUsage
-        expr: oracle_monitor_sessions_pct_used > 85
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Session usage > 85%"
-```
-
-### Grafana Alerts
-
-Configure notification channels in Grafana:
-- Email
-- Slack
-- PagerDuty
-- Webhook
+Threshold-based alerting is evaluated by the `check_all_thresholds` Celery task.
+Triggered alerts are persisted to Redis (`alerts:history`) and displayed both in
+the **Alerts** page (active checks) and the **Monitoring** page (history).
 
 ---
 

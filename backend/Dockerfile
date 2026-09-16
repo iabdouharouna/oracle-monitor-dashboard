@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv==0.4.0
+RUN pip install --no-cache-dir uv==0.12.14
 
 FROM base AS development
 
@@ -56,6 +56,7 @@ RUN pip install --no-cache-dir --no-binary=uvicorn \
     pydantic-settings==2.15.0 \
     python-jose[cryptography]==3.5.0 \
     passlib[bcrypt]==1.7.4 \
+    bcrypt==4.0.1 \
     python-multipart==0.0.32 \
     pyyaml==6.0.3 \
     alembic==1.20.0 \
@@ -67,9 +68,7 @@ RUN pip install --no-cache-dir --no-binary=uvicorn \
     reportlab==5.0.1 \
     jinja2==3.1.6 \
     httpx==0.28.1 \
-    prometheus-client==0.26.0 \
-    prometheus-fastapi-instrumentator==8.1.0 \
-    && useradd --create-home --shell /bin/bash appuser
+    psutil==7.2.2
 
 WORKDIR /app
 

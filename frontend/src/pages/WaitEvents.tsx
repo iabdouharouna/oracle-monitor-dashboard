@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Grid, Tab, Button } from '@mui/material';
+import { Box, Typography, Paper, Grid, Tab } from '@mui/material';
 import { TabContext, TabList, TabPanel } from '@mui/lab';
 import {
   LineChart,
@@ -11,12 +11,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useSystemWaits, useSessionWaits, useIOMetrics, useMetricsHistory } from '../api/hooks/useWaits';
-import { WaitClassChart, DataTable, LoadingSkeleton, TimeRangeSelector, KPICard } from '../components/common';
+import { WaitClassChart, DataTable, TimeRangeSelector, KPICard } from '../components/common';
 import { Speed, TrendingUp, BugReport, Timer } from '@mui/icons-material';
-import type { SystemWaitEvent } from '../../types/api';
 
 export const WaitEvents: React.FC = () => {
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState('0');
   const [timeRange, setTimeRange] = useState('1h');
   const hours = { '5m': 5/60, '15m': 15/60, '1h': 1, '6h': 6, '24h': 24 }[timeRange] || 1;
 
@@ -80,13 +79,13 @@ export const WaitEvents: React.FC = () => {
       </Grid>
 
       <TabContext value={tab}>
-        <TabList sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} onChange={(_, v) => setTab(v)}>
+        <TabList sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} onChange={(_, v) => setTab(String(v))}>
           <Tab label="System Waits" />
           <Tab label="Session Waits" />
           <Tab label="Historical Trends" />
         </TabList>
 
-        <TabPanel value={0} sx={{ p: 0 }}>
+        <TabPanel value="0" sx={{ p: 0 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={5}>
               <Paper sx={{ p: 2, height: '100%' }}>
@@ -117,7 +116,7 @@ export const WaitEvents: React.FC = () => {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={1} sx={{ p: 0 }}>
+        <TabPanel value="1" sx={{ p: 0 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Current Session Waits</Typography>
             <DataTable
@@ -138,7 +137,7 @@ export const WaitEvents: React.FC = () => {
           </Paper>
         </TabPanel>
 
-        <TabPanel value={2} sx={{ p: 0 }}>
+        <TabPanel value="2" sx={{ p: 0 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>Historical Metrics (Last {timeRange})</Typography>
             {history && Object.keys(history).length > 0 ? (
@@ -148,7 +147,7 @@ export const WaitEvents: React.FC = () => {
                     <Box sx={{ height: 250 }}>
                       <Typography variant="subtitle2" sx={{ mb: 1 }}>{metric}</Typography>
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={points} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                        <LineChart data={points as unknown as Array<Record<string, unknown>> } margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#E1E4E8" />
                           <XAxis dataKey="timestamp" tick={{ fontSize: 10 }} tickFormatter={v => new Date(v).toLocaleTimeString()} />
                           <YAxis tick={{ fontSize: 10 }} />

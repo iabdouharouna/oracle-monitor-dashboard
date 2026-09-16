@@ -49,3 +49,16 @@ export function useCheckThresholds() {
     refetchInterval: 60000,
   });
 }
+
+export function useAlertHistory(limit: number = 100) {
+  return useQuery({
+    queryKey: ['alerts', 'history', limit],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TriggeredAlert[]>('/alerts/history', {
+        params: { limit },
+      });
+      return data;
+    },
+    refetchInterval: 30000,
+  });
+}

@@ -105,10 +105,6 @@ temp/
 *.ipr
 *.iws
 
-# Prometheus/Grafana data
-monitoring/grafana/data/
-monitoring/prometheus/data/
-
 # Celery
 celerybeat-schedule
 celerybeat-schedule.*

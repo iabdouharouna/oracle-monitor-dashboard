@@ -4,10 +4,9 @@ import { TabContext, TabList, TabPanel } from '@mui/lab';
 import { useTablespaces, useTablespaceDetail, useCapacityPlanning } from '../api/hooks/useStorage';
 import { TablespaceGauges, DataTable, StorageTrendChart, LoadingSkeleton, KPICard, GaugeChart } from '../components/common';
 import { Storage as StorageIcon, TrendingUp, Warning, Error as ErrorIcon } from '@mui/icons-material';
-import { format } from 'date-fns';
 
 export const Storage: React.FC = () => {
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState('0');
   const [selectedTablespace, setSelectedTablespace] = useState<string | null>(null);
 
   const { data: tablespaces, isLoading, error, refetch } = useTablespaces();
@@ -34,7 +33,7 @@ export const Storage: React.FC = () => {
             Tablespace usage and capacity planning
           </Typography>
         </Box>
-        <Button variant="outlined" onClick={refetch} startIcon={<StorageIcon />}>Refresh</Button>
+        <Button variant="outlined" onClick={() => refetch()} startIcon={<StorageIcon />}>Refresh</Button>
       </Box>
 
       {/* Summary Cards */}
@@ -64,13 +63,13 @@ export const Storage: React.FC = () => {
 
       {/* Tables */}
       <TabContext value={tab}>
-        <TabList sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} onChange={(_, v) => setTab(v)}>
+        <TabList sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} onChange={(_, v) => setTab(String(v))}>
           <Tab label="Permanent/Undo" />
           <Tab label="Temporary" />
           <Tab label="Capacity Planning" />
         </TabList>
 
-        <TabPanel value={0} sx={{ p: 0 }}>
+        <TabPanel value="0" sx={{ p: 0 }}>
           <DataTable
             rows={permTablespaces.map((t, i) => ({ id: i, ...t }))}
             columns={[
@@ -88,7 +87,7 @@ export const Storage: React.FC = () => {
           />
         </TabPanel>
 
-        <TabPanel value={1} sx={{ p: 0 }}>
+        <TabPanel value="1" sx={{ p: 0 }}>
           <DataTable
             rows={tempTablespaces.map((t, i) => ({ id: i, ...t }))}
             columns={[
@@ -104,7 +103,7 @@ export const Storage: React.FC = () => {
           />
         </TabPanel>
 
-        <TabPanel value={2} sx={{ p: 0 }}>
+        <TabPanel value="2" sx={{ p: 0 }}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
               <Typography variant="h6" sx={{ mb: 2 }}>Capacity Projections</Typography>

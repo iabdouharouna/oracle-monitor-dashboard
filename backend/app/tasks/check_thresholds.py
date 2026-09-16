@@ -13,8 +13,11 @@ def check_all_thresholds(self) -> dict:
 
     async def _run() -> dict:
         await init_db()
+        from app.redis import init_redis, close_redis
+        await init_redis()
         try:
             triggered = await AlertService.check_thresholds()
+            await AlertService.record_triggered(triggered)
             logger.info("Threshold check complete", triggered=len(triggered))
             return {"status": "ok", "triggered_alerts": len(triggered)}
         except Exception as e:
@@ -22,5 +25,6 @@ def check_all_thresholds(self) -> dict:
             return {"status": "error", "error": str(e)}
         finally:
             await close_db()
+            await close_redis()
 
     return asyncio.run(_run())

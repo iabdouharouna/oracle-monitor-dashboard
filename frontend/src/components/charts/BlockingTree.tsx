@@ -15,7 +15,8 @@ export const BlockingTree: React.FC<BlockingTreeProps> = ({
   width = '100%',
   height = 400,
 }) => {
-  const graphRef = React.useRef<React.RefObject<Graph>>(React.createRef());
+  const graphRef = React.useRef<any>(null);
+
   const [highlightedNode, setHighlightedNode] = React.useState<string | null>(null);
 
   const { nodes, links } = React.useMemo(() => {
@@ -56,12 +57,12 @@ export const BlockingTree: React.FC<BlockingTreeProps> = ({
   return (
     <div style={{ width, height, border: '1px solid #E1E4E8', borderRadius: 4, background: '#fff' }}>
       <Graph
-        ref={graphRef.current}
+        ref={graphRef}
         graphData={{ nodes, links }}
         nodeAutoColorBy='status'
         nodeLabel={(node) => `${node.username || 'BG'}\nSID:${node.sid}`}
         nodeVal='val'
-        nodeCanvasObject={(node, ctx, globals) => {
+        nodeCanvasObject={(node, ctx) => {
           const isBlocker = links.some((l) => l.source === node.id);
           const isHighlighted = highlightedNode === node.id;
           
@@ -91,12 +92,11 @@ export const BlockingTree: React.FC<BlockingTreeProps> = ({
         linkDirectionalArrowColor='#D13438'
         linkDirectionalArrowRelPos={0.5}
         onNodeClick={handleNodeClick}
-        onNodeRightClick={(node, event) => {
+        onNodeRightClick={(_, event) => {
           event.preventDefault();
         }}
         enableNodeDrag={true}
-        enableZoomPanInteraction={true}
-        zoomToFit={true}
+        enableZoomInteraction={true}
       />
     </div>
   );

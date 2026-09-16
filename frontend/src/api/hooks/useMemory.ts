@@ -39,7 +39,7 @@ export function useAllMemoryAdvice() {
   return useQuery({
     queryKey: ['memory', 'all'],
     queryFn: async () => {
-      const { data } = await apiClient.get('/memory/all');
+      const { data } = await apiClient.get<MemoryAdvisor[]>('/memory/all');
       return data;
     },
     refetchInterval: 300000,

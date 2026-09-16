@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Button, Box } from '@mui/material';
+import { Alert, Button } from '@mui/material';
 import { Refresh } from '@mui/icons-material';
 
 interface ErrorDisplayProps {

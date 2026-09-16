@@ -11,3 +11,4 @@ export { LiveMonitor } from './LiveMonitor';
 export { Alerts } from './Alerts';
 export { Settings } from './Settings';
 export { Reports } from './Reports';
+export { Monitoring } from './Monitoring';

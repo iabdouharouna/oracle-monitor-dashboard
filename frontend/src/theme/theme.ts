@@ -1,4 +1,5 @@
 import { createTheme, ThemeOptions, Theme } from '@mui/material/styles';
+import type {} from '@mui/x-data-grid/themeAugmentation';
 
 export const sqlDeveloperPalette = {
   primary: {
@@ -79,8 +80,8 @@ const lightThemeOptions: ThemeOptions = {
     '0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05)',
     '0 20px 25px rgba(0,0,0,0.1), 0 10px 10px rgba(0,0,0,0.04)',
     '0 25px 50px rgba(0,0,0,0.15)',
-    ...Array(19).fill('none'),
-  ],
+    ...(Array(19).fill('none') as string[]),
+  ] as Theme['shadows'],
   components: {
     MuiCssBaseline: {
       styleOverrides: {

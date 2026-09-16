@@ -45,7 +45,6 @@ cp .env.example .env
 ```bash
 ORACLE_PASSWORD=secure_password_here
 SECRET_KEY=your-32-character-secret-key-minimum
-GRAFANA_PASSWORD=admin_secure_password
 ```
 
 ### 3. Démarrer l'environnement de développement
@@ -71,8 +70,7 @@ make dev-logs
 # Frontend : http://localhost:3000
 # API Backend : http://localhost:8000
 # Docs API : http://localhost:8000/docs
-# Grafana : http://localhost:3001 (admin/admin)
-# Prometheus : http://localhost:9090
+# Monitoring : http://localhost:3000/monitoring
 ```
 
 ---
@@ -112,15 +110,6 @@ services:
     build: ./frontend (production target)
     ports: [3000:80]
     depends_on: [backend]
-
-  prometheus:      # Collecte de métriques
-    ports: [9090]
-    volumes: [prometheus_data]
-
-  grafana:         # Tableaux de bord
-    ports: [3001]
-    volumes: [grafana_data]
-    provisioning: dashboards, datasources
 ```
 
 ### Remplacement de développement (`docker-compose.override.yml`)
@@ -233,15 +222,23 @@ celery -A app.celery_app beat -l INFO --scheduler celery.beat.PersistentSchedule
 
 ### Stack de monitoring
 
-**Prometheus :**
-- Scrape le backend `/metrics` toutes les 15s
-- Rétention : 15 jours (configurable)
-- Stockage : Volume `prometheus_data`
+Les métriques sont collectées et stockées entièrement dans l'application Redis :
+- **Métriques DB** tâche Celery (`collect_all_metrics`) : `db_cpu_pct`,
+  `db_sessions_total`, `db_sessions_active`, `db_storage_pct`, `db_io_read_mbps`,
+  `db_io_write_mbps`
+- **Métriques API** (tampon in-process, vidage toutes les `METRICS_FLUSH_INTERVAL` s) :
+  `api_requests_total`, `api_latency_avg_ms`, `api_errors_total`
+- **Métriques hôte** (psutil) : `host_cpu_pct`, `host_ram_pct`, `host_ram_used_mb`,
+  `host_disk_pct`
 
-**Grafana :**
-- Source de données Prometheus pré-provisionnée
-- Provisionnement des tableaux de bord depuis `monitoring/grafana/dashboards/`
-- Utilisateur admin issu de la variable d'env `GRAFANA_PASSWORD`
+Rétention : 7 jours par défaut (`METRICS_RETENTION_HOURS`), jusqu'à 30k points par série.
+Disponibles via l'API et la page **Monitoring** de l'interface.
+
+### Alertes par seuil
+
+L'évaluation des seuils est gérée par la tâche Celery `check_all_thresholds`.
+Les alertes déclenchées sont persistées dans Redis (`alerts:history`) et affichées
+dans la page **Alerts** (checks actifs) et la page **Monitoring** (historique).
 
 ---
 
@@ -259,7 +256,6 @@ git clone <repo-url> .
 
 # Générer des secrets sécurisés
 openssl rand -base64 32  # Pour SECRET_KEY
-openssl rand -base64 32  # Pour GRAFANA_PASSWORD
 openssl rand -base64 32  # Pour ORACLE_PASSWORD
 ```
 
@@ -285,9 +281,6 @@ REDIS_URL=redis://redis:6379/0
 HAS_DIAGNOSTICS_PACK=true
 DEBUG=false
 LOG_LEVEL=INFO
-
-# Grafana
-GRAFANA_PASSWORD=your_grafana_password
 
 # Frontend (au moment du build)
 VITE_API_URL=https://your-domain.com
@@ -516,54 +509,27 @@ docker run --rm \
 
 ## Monitoring et alertes
 
-### Règles Prometheus
+### Métriques internes
 
-Créer `monitoring/prometheus/rules/oracle-monitor.yml` :
+Les métriques sont collectées, stockées et visualisées entièrement dans l'application
+(aucune dépendance Prometheus/Grafana externe) :
 
-```yaml
-groups:
-  - name: oracle-monitor
-    rules:
-      - alert: OracleDown
-        expr: up{job="oracle-monitor-backend"} == 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Oracle Monitor backend is down"
+- **Métriques DB** (tâche Celery `collect_all_metrics`) : `db_cpu_pct`,
+  `db_sessions_total`, `db_sessions_active`, `db_storage_pct`, `db_io_read_mbps`,
+  `db_io_write_mbps`
+- **Métriques API** (tampon in-process, vidage toutes les `METRICS_FLUSH_INTERVAL` s) :
+  `api_requests_total`, `api_latency_avg_ms`, `api_errors_total`
+- **Métriques hôte** (psutil) : `host_cpu_pct`, `host_ram_pct`, `host_ram_used_mb`,
+  `host_disk_pct`
 
-      - alert: HighTablespaceUsage
-        expr: oracle_monitor_tablespace_usage_percent > 90
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "Tablespace {{ $labels.tablespace }} > 90%"
+Toutes les séries sont conservées dans Redis pendant 7 jours par défaut
+(`METRICS_RETENTION_HOURS`) et sont visibles dans la page **Monitoring** de l'interface.
 
-      - alert: HighCPUUsage
-        expr: oracle_monitor_cpu_usage_percent > 90
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Database CPU > 90%"
+### Alertes par seuil
 
-      - alert: HighSessionUsage
-        expr: oracle_monitor_sessions_pct_used > 85
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Session usage > 85%"
-```
-
-### Alertes Grafana
-
-Configurer les canaux de notification dans Grafana :
-- Email
-- Slack
-- PagerDuty
-- Webhook
+L'évaluation des alertes par seuil est gérée par la tâche Celery `check_all_thresholds`.
+Les alertes déclenchées sont persistées dans Redis (`alerts:history`) et affichées dans
+la page **Alerts** (checks actifs) et la page **Monitoring** (historique).
 
 ---
 
@@ -577,7 +543,7 @@ Configurer les canaux de notification dans Grafana :
 | Le backend ne peut pas se connecter à Oracle | Vérifier `ORACLE_DSN`, vérifier que le health check Oracle passe |
 | Le frontend affiche « Network Error » | Vérifier `VITE_API_URL`, vérifier l'accessibilité du backend |
 | Les tâches Celery ne s'exécutent pas | Vérifier la connectivité Redis, `docker logs celery-worker` |
-| Les métriques n'apparaissent pas dans Prometheus | Vérifier l'endpoint `/metrics`, vérifier les cibles Prometheus |
+| Les métriques n'apparaissent pas dans Monitoring | Vérifier Redis (`KEYS 'metrics:*'`), logs Celery, psutil installé |
 | Grafana « No data » | Vérifier le provisioning de la source de données, la connectivité Prometheus |
 
 ### Commandes de débogage

@@ -98,8 +98,6 @@ updates:
           - "node:*"
           - "nginx:*"
           - "redis:*"
-          - "prom/*"
-          - "grafana/*"
         update-types:
           - "minor"
           - "patch"

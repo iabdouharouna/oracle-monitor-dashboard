@@ -52,7 +52,7 @@ The Oracle Monitor Dashboard is a full-stack application built with a **FastAPI 
 | Validation | Pydantic | 2.5+ | Data validation, settings |
 | Auth | python-jose + passlib | 3.3+/1.7+ | JWT, bcrypt |
 | Logging | structlog | 24.1+ | Structured JSON logging |
-| Metrics | prometheus-client | 0.19+ | Prometheus exposition |
+| Metrics | psutil | 5.9+ | Host CPU/RAM/disk collection (per-series history in Redis) |
 
 ### Frontend
 | Component | Technology | Version | Purpose |
@@ -75,7 +75,7 @@ The Oracle Monitor Dashboard is a full-stack application built with a **FastAPI 
 | Containerization | Docker Compose | Multi-container orchestration |
 | Oracle DB | gvenzl/oracle-free:23-slim | Free Oracle 23c |
 | Reverse Proxy | Nginx | Static serving, API proxy |
-| Monitoring | Prometheus + Grafana | Metrics collection & visualization |
+| Monitoring | Internal (Redis-based history + Monitoring page) | Metrics collection & visualization |
 | CI/CD | GitHub Actions (planned) | Automated testing & deployment |
 
 ## Backend Architecture
@@ -415,24 +415,27 @@ BCRYPT_ROUNDS = 12
 
 ## Monitoring & Observability
 
-### Application Metrics (Prometheus)
+### Application Metrics
+
+Metrics are collected in-process (API) and via Celery (DB + host), then stored in
+Redis time-series (`metrics:series:<name>`) and exposed through:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/v1/metrics/history` | Time-series data (configurable hours / step) |
+| `GET /api/v1/metrics/available` | List of collected metric names |
+| `GET /api/v1/metrics/middleware` | HTTP metrics middleware (request count, latency, errors) |
 
 ```
-# HTTP Metrics
-http_requests_total{method, endpoint, status}
-http_request_duration_seconds{method, endpoint}
-http_requests_in_progress
+# DB Metrics
+db_cpu_pct, db_sessions_total, db_sessions_active, db_storage_pct
+db_io_read_mbps, db_io_write_mbps
 
-# Business Metrics
-oracle_monitor_active_sessions
-oracle_monitor_tablespace_usage_percent{tablespace}
-oracle_monitor_cpu_usage_percent
-oracle_monitor_alert_total{severity}
+# API Metrics
+api_requests_total, api_latency_avg_ms, api_errors_total
 
-# System Metrics
-process_cpu_seconds_total
-process_resident_memory_bytes
-process_open_fds
+# Host Metrics
+host_cpu_pct, host_ram_pct, host_ram_used_mb, host_disk_pct
 ```
 
 ### Health Checks
@@ -440,7 +443,7 @@ process_open_fds
 | Endpoint | Checks |
 |----------|--------|
 | `GET /health` | Oracle connectivity, Redis connectivity |
-| `GET /metrics` | Prometheus metrics exposition |
+| `GET /api/v1/metrics/history` | Time-series metrics query |
 | Docker HEALTHCHECK | Container-level liveness |
 
 ### Logging
@@ -462,7 +465,7 @@ process_open_fds
 |---------|-----------|------------|
 | Oracle DB down | Health check, query timeout | Circuit breaker, cached data, alert |
 | Redis down | Connection error | Graceful degradation (no cache) |
-| High query latency | Prometheus alert | Query optimization, index review |
+| High query latency | Threshold alert (Celery) | Query optimization, index review |
 | Memory leak | Container restart | Resource limits, profiling |
 | Auth token expiry | 401 response | Auto-refresh with refresh token |
 

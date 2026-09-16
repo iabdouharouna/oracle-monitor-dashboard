@@ -47,8 +47,9 @@ export const AASChart: React.FC<AASChartProps> = ({
     return acc;
   }, [] as Record<string, any>[]);
 
-  const handleLegendClick = (waitClass: string) => {
-    if (!onSelectionChange) return;
+  const handleLegendClick = (data: { value?: string | number }) => {
+    if (!onSelectionChange || data.value === undefined) return;
+    const waitClass = String(data.value);
     const newSelection = selectedWaitClasses?.includes(waitClass)
       ? selectedWaitClasses.filter((c) => c !== waitClass)
       : [...(selectedWaitClasses || []), waitClass];

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, MenuItem, Button, Box, Typography, InputAdornment, TextField, IconButton } from '@mui/material';
+import { Menu, MenuItem, Button, Box, Typography, TextField, IconButton } from '@mui/material';
 import { Schedule, CalendarToday } from '@mui/icons-material';
 import { useState } from 'react';
 import { format } from 'date-fns';

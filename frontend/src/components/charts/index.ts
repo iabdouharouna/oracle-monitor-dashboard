@@ -7,3 +7,4 @@ export { BlockingTree } from './BlockingTree';
 export { ExecutionPlan } from './ExecutionPlan';
 export { CPURatioChart } from './CPURatioChart';
 export { StorageTrendChart } from './StorageTrendChart';
+export { MetricsTrendChart } from './MetricsTrendChart';

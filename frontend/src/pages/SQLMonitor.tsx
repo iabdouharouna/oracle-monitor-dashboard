@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Grid, Divider, Button, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, Chip } from '@mui/material';
+import { Box, Typography, Paper, Grid, Button, Tabs, Tab, Chip } from '@mui/material';
 import { useActiveSQL, useSQLMonitorDetail, useExecutionPlan } from '../api/hooks/useSqlMonitor';
 import { DataTable, LoadingSkeleton, ErrorDisplay } from '../components/common';
 import { ExecutionPlan } from '../components/charts/ExecutionPlan';
 import { Visibility, Code, TableChart, ArrowBack } from '@mui/icons-material';
-import { format } from 'date-fns';
 
 export const SQLMonitor: React.FC = () => {
   const [selectedSQL, setSelectedSQL] = useState<{ sqlId: string; sqlExecId: number } | null>(null);
@@ -46,7 +45,7 @@ export const SQLMonitor: React.FC = () => {
               SQL ID: {detail.sqlId} • Exec ID: {detail.sqlExecId} • {detail.status}
             </Typography>
           </Box>
-          <Button variant="contained" onClick={refetch} startIcon={<Code />}>
+          <Button variant="contained" onClick={() => refetch()} startIcon={<Code />}>
             Refresh
           </Button>
         </Box>
@@ -184,7 +183,7 @@ export const SQLMonitor: React.FC = () => {
             Real-time monitored SQL executions
           </Typography>
         </Box>
-        <Button variant="contained" onClick={refetch} startIcon={<Code />}>
+        <Button variant="contained" onClick={() => refetch()} startIcon={<Code />}>
           Refresh
         </Button>
       </Box>

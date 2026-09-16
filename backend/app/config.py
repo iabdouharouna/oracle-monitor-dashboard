@@ -78,8 +78,12 @@ class Settings(BaseSettings):
     CELERY_TASK_TIME_LIMIT: int = 300
     CELERY_WORKER_PREFETCH_MULTIPLIER: int = 4
     
-    PROMETHEUS_METRICS_ENABLED: bool = True
-    METRICS_PORT: int = 9090
+    METRICS_ENABLED: bool = True
+    METRICS_FLUSH_INTERVAL: int = 30
+    METRICS_RETENTION_HOURS: int = 168
+    METRICS_COLLECT_DB: bool = True
+    METRICS_COLLECT_INFRA: bool = True
+    METRICS_COLLECT_API: bool = True
     
     DEFAULT_PAGE_SIZE: int = 50
     MAX_PAGE_SIZE: int = 500

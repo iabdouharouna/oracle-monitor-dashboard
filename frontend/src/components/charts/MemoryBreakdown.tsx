@@ -100,14 +100,12 @@ export const MemoryBreakdown: React.FC<MemoryBreakdownProps> = ({ sga, pga }) =>
       <Treemap
         data={data}
         dataKey="value"
-        ratio={0.6 * (1 + Math.sqrt(5)) / 2}
         stroke="#fff"
-        strokeWidth={2}
         fill="#888"
         content={<TreemapContent total={total} />}
       >
         <Tooltip
-          formatter={(value: number | string, name: string) =>
+          formatter={(value) =>
             [`${Number(value).toFixed(2)}`, 'MB']
           }
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #E1E4E8', borderRadius: 4 }}

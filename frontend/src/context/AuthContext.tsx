@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getAuthTokens, setAuthTokens, clearAuthTokens, isAuthenticated } from '../utils/helpers';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { getAuthTokens, setAuthTokens, clearAuthTokens } from '../utils/helpers';
 import apiClient from '../api/client';
 
 interface User {

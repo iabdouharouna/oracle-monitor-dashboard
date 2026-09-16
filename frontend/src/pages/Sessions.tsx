@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Box, Typography, Paper, Grid, TextField, Button, Dialog, DialogTitle, DialogContent, DialogActions, Divider, Chip } from '@mui/material';
+import { Box, Typography, Paper, Grid, TextField, Button, Chip } from '@mui/material';
 import { useSessions, useBlockingChains, useLongOperations, useKillSession } from '../api/hooks/useSessions';
 import { DataTable, LoadingSkeleton, ErrorDisplay, BlockingTree } from '../components/common';
-import { FilterList, Delete, Refresh, Speed } from '@mui/icons-material';
+import { FilterList, Delete, Refresh } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 
@@ -24,16 +24,6 @@ export const Sessions: React.FC = () => {
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
-  };
-
-  const handleKill = async (sid: number, serial: number) => {
-    if (window.confirm(`Kill session ${sid},${serial}?`)) {
-      try {
-        await killMutation.mutateAsync({ sid, serial });
-      } catch (e) {
-        // Error handled by mutation
-      }
-    }
   };
 
   const handleKillSelected = async () => {
@@ -62,7 +52,6 @@ export const Sessions: React.FC = () => {
   }
 
   const activeSessions = sessions?.filter(s => s.status === 'ACTIVE') || [];
-  const inactiveSessions = sessions?.filter(s => s.status === 'INACTIVE') || [];
   const blockedSessions = sessions?.filter(s => s.blockingSession) || [];
 
   return (
@@ -98,7 +87,7 @@ export const Sessions: React.FC = () => {
             onChange={(e) => handleFilterChange('minDuration', e.target.value)}
             sx={{ minWidth: 150 }}
           />
-          <Button variant="outlined" onClick={refetch} startIcon={<Refresh />}>Refresh</Button>
+          <Button variant="outlined" onClick={() => refetch()} startIcon={<Refresh />}>Refresh</Button>
           {canKill && (
             <Button
               variant="contained"
@@ -181,7 +170,7 @@ export const Sessions: React.FC = () => {
           loading={isLoading}
           error={error}
           checkboxSelection={canKill}
-          onSelectionChange={setSelectedSessions}
+          onSelectionChange={(ids) => setSelectedSessions(ids.filter((id): id is number => typeof id === 'number'))}
         />
       </Paper>
 

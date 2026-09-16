@@ -8,3 +8,4 @@ export * from './useMemory';
 export * from './useWaits';
 export * from './useAlerts';
 export * from './useDatabases';
+export * from './useMetrics';

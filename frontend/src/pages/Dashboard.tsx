@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import { Grid, Box, Typography, Paper, Tab, Alert, AlertTitle, Chip } from '@mui/material';
-import { TabContext, TabList, TabPanel } from '@mui/lab';
+import React from 'react';
+import { Grid, Box, Typography, Paper, Chip, Alert, AlertTitle } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOverview } from '../api/hooks/useOverview';
 import { useASHAAS, useASHWaitClasses } from '../api/hooks/usePerformance';
@@ -8,12 +7,11 @@ import { useCPURatio, useTopSQL } from '../api/hooks/useInstance';
 import { useTablespaces } from '../api/hooks/useStorage';
 import { KPICard, GaugeChart, RefreshControl, ErrorDisplay } from '../components/common';
 import { AASChart, WaitClassChart, TopSQLChart, CPURatioChart } from '../components/charts';
-import { Storage, Speed, Memory, BugReport, Dns as Database, Warning, CheckCircle } from '@mui/icons-material';
+import { Storage, Speed, Memory, Dns as Database } from '@mui/icons-material';
 import { format } from 'date-fns';
 
 export const Dashboard: React.FC = () => {
-  const [timeRange, setTimeRange] = useState('1h');
-  const hours = { '5m': 5/60, '15m': 15/60, '1h': 1, '6h': 6, '24h': 24 }[timeRange] || 1;
+  const hours = 1;
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch } = useOverview();
   const { data: aasData } = useASHAAS(hours);
@@ -21,7 +19,6 @@ export const Dashboard: React.FC = () => {
   const { data: cpuRatio } = useCPURatio();
   const { data: topSql } = useTopSQL(5);
   const { data: tablespaces } = useTablespaces();
-  const [activeTab, setActiveTab] = useState(0);
 
   const handleRefresh = () => {
     refetch();
@@ -47,7 +44,6 @@ export const Dashboard: React.FC = () => {
   const storage = data?.storage;
   const sessions = data?.sessions;
   const io = data?.io;
-  const waits = data?.waits;
   const alerts = data?.alerts;
 
   return (

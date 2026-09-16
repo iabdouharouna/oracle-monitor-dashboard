@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppBar, Toolbar, Typography, Box, IconButton, Avatar, Menu, MenuItem, Tooltip, Badge, Divider } from '@mui/material';
-import { Notifications, Person, Settings, Logout, Dns as Database } from '@mui/icons-material';
+import { Notifications, Person, Settings, Logout } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCheckThresholds } from '../../api/hooks/useAlerts';

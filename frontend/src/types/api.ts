@@ -85,10 +85,12 @@ export interface DatabaseInfo {
   version: string;
   host: string;
   platform: string;
+  status: string;
   startupTime: string;
   logMode: string;
   role: string;
   instanceNumber: number;
+  uptimeSeconds: number;
 }
 
 export interface ClientSummary {
@@ -463,4 +465,18 @@ export interface UserInfo {
   role: 'DBA' | 'VIEWER';
   isActive: boolean;
   createdAt: string;
+}
+
+export interface MetricPoint {
+  timestamp: string;
+  value: number;
+}
+
+export interface MetricsHistoryResponse {
+  hours: number;
+  metrics: Record<string, MetricPoint[]>;
+}
+
+export interface MetricsAvailableResponse {
+  metrics: string[];
 }

@@ -50,13 +50,12 @@ oracle-monitor-dashboard/
 │   ├── src/
 │   │   ├── api/hooks/    # TanStack Query hooks
 │   │   ├── components/   # components (common/charts/layout)
-│   │   ├── pages/        # 13 page components
+│   │   ├── pages/        # 14 page components
 │   │   ├── context/      # Auth, Connection, Settings
 │   │   ├── theme/        # SQL Developer MUI theme (+ dark theme)
 │   │   └── types/        # TypeScript interfaces
 │   └── tests/
 ├── docs/                 # 11 comprehensive docs
-├── monitoring/           # Prometheus/Grafana
 └── scripts/              # Oracle init scripts
 ```
 

@@ -560,14 +560,12 @@ docker logs --tail 100 <container_name>
 **Symptoms:**
 - Oracle can't write to data files
 - Redis can't write AOF
-- Grafana can't write dashboards
 
 **Solutions:**
 ```bash
 # Fix ownership
 sudo chown -R 1000:1000 ./data/oracle
 sudo chown -R 999:999 ./data/redis
-sudo chown -R 472:472 ./data/grafana
 
 # Or run containers as root (not recommended)
 # user: root in docker-compose.yml
@@ -577,33 +575,27 @@ sudo chown -R 472:472 ./data/grafana
 
 ## Monitoring & Alerting Issues
 
-### Prometheus Not Scraping
+### Metrics Not Appearing in Monitoring Page
 
 **Solutions:**
 ```bash
-# Check Prometheus targets
-curl http://localhost:9090/api/v1/targets
+# Check Redis has data
+docker exec oracle-monitor-redis redis-cli --no-auth-warning KEYS 'metrics:*'
 
-# Check backend /metrics
-curl http://localhost:8000/metrics
+# Check Celery logs for collection errors
+docker logs oracle-monitor-celery-worker-1 --tail 50
 
-# Check Prometheus config
-cat monitoring/prometheus.yml
+# Manually trigger collection
+docker exec oracle-monitor-celery-beat celery -A app.celery_app call app.tasks.collect_metrics.collect_all_metrics
 ```
 
-### Grafana "No Data"
+### Host Metrics (psutil) Disabled
 
-**Solutions:**
-```bash
-# Check datasource
-# Grafana → Connections → Data sources → Prometheus → Test
+**Symptoms:** `host_*` metrics are absent from the Monitoring page.
 
-# Check dashboard queries
-# Grafana → Dashboards → Oracle Monitor → Edit panel → Query inspector
+**Cause:** psutil is not installed in the backend container.
 
-# Check Prometheus retention
-# prometheus.yml: retention.time: 15d
-```
+**Solution:** Rebuild the backend image after adding `psutil>=5.9.0` to `pyproject.toml`.
 
 ### Threshold changes "don't stick" / revert after restart
 
