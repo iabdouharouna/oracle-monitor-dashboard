@@ -132,6 +132,16 @@ All docs in `/docs`:
 **Bilingual docs:** every doc under `docs/` has a French mirror in `docs/fr/`
 (ADRs in `docs/adr/fr/`). When updating a doc, update both versions.
 
+## Git Workflow
+
+Every evolution of the project goes through a dedicated branch merged into `main`:
+
+1. Never commit directly on `main` — always create a feature branch (`git checkout -b feat/<name>` from `main`).
+2. Make the changes on the branch (code, tests, docs — bilingue FR/EN si doc).
+3. Test + lint the branch locally before merging.
+4. Merge the branch into `main` (merge, pas de squash ni rebase forcé) puis push `main`.
+5. Les bumps de dépendances (dependabot ou manuels) doivent être vérifiés pour compatibilité avant merge — un bump incompatible casse le build (ex: MUI v5→v9, eslint v8→v9, bcrypt 5 vs passlib 1.7.4).
+
 ## Common Issues
 
 | Issue | Solution |
