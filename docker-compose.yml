@@ -62,6 +62,8 @@ services:
     depends_on:
       - backend
       - redis
+    healthcheck:
+      disable: true
     deploy:
       replicas: 2
       resources:
@@ -87,6 +89,8 @@ services:
     volumes:
       - app_config:/app/config
       - celery_beat_data:/app/celerybeat-schedule
+    healthcheck:
+      disable: true
 
   frontend:
     build:
