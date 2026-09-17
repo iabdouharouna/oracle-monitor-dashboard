@@ -1,4 +1,5 @@
 export { Login } from './Login';
+export { Connections } from './Connections';
 export { Dashboard } from './Dashboard';
 export { InstanceViewer } from './InstanceViewer';
 export { PerformanceHub } from './PerformanceHub';

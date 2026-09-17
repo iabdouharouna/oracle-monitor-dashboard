@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, Box, Typography, IconButton, useMediaQuery, useTheme } from '@mui/material';
-import { Menu, ChevronLeft, Dashboard, Storage, Memory, Speed, BugReport, Terminal, Settings, Assessment, Timeline, MonitorHeart, ShowChart } from '@mui/icons-material';
+import { Menu, ChevronLeft, Dashboard, Storage, Memory, Speed, BugReport, Terminal, Settings, Assessment, Timeline, MonitorHeart, ShowChart, StorageOutlined } from '@mui/icons-material';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const menuItems = [
+  { path: '/connections', label: 'Connections', icon: <StorageOutlined /> },
   { path: '/', label: 'Dashboard', icon: <Dashboard /> },
   { path: '/instance', label: 'Instance Viewer', icon: <Speed /> },
   { path: '/performance', label: 'Performance Hub', icon: <Assessment /> },

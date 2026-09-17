@@ -24,6 +24,9 @@ curl http://localhost:8000/health
   "version": "1.0.0"
 }
 
+# Nothing configured yet:
+# {"status": "healthy", "database": "not_configured", ...}  (HTTP 200 — container stays healthy)
+
 # Metrics
 curl http://localhost:8000/metrics
 ```
@@ -61,7 +64,7 @@ make db-logs
 | Insufficient memory | Ensure 8GB+ RAM allocated to Docker. Oracle 23c needs ~4GB minimum. |
 | Port 1521 in use | Check `lsof -i :1521` and stop conflicting process |
 | Corrupted volume | `docker volume rm oracle-monitor-dashboard_oracle_data` then restart |
-| Invalid password | Check `ORACLE_PASSWORD` in `.env` matches Oracle requirements |
+| Invalid password | Check the Oracle container's password variable matches Oracle requirements |
 
 **Debug:**
 ```bash
@@ -139,7 +142,8 @@ make backend-logs
 # Common issues:
 # 1. Missing .env file
 cp .env.example .env
-# Edit .env with required values
+# Edit .env with required values (SECRET_KEY is the only required secret;
+# ORACLE_USER/ORACLE_PASSWORD/ORACLE_DSN are legacy and not needed at startup)
 
 # 2. Invalid SECRET_KEY (must be 32+ chars)
 # Generate: openssl rand -base64 32
@@ -150,6 +154,29 @@ cp .env.example .env
 # 4. Dependency conflicts
 # Rebuild: make dev-build
 ```
+
+### No Database Configured / Monitoring Endpoints Return 503
+
+**Symptoms:**
+- Monitoring pages redirect to the Connections page (onboarding)
+- Monitoring API calls fail with HTTP 503 `DatabaseConnectionError`
+- `GET /health` → `"database": "not_configured"` (still HTTP 200)
+- Celery tasks `collect_db_metrics`, `check_all_thresholds`, `create_awr_snapshot` skip silently
+
+**Cause:** no database is enrolled. This is the **normal initial state** — at startup no PRIMARY is
+forced anymore (the legacy `ORACLE_USER`/`ORACLE_PASSWORD`/`ORACLE_DSN` vars are ignored).
+
+**Solutions:**
+
+```bash
+# Enroll databases from the UI (Connections page, DBA role), or seed them with:
+# DATABASES_JSON='[{"name":"FREE","host":"oracle","port":1521,"serviceName":"FREE","username":"monitor","password":"...","isDefault":true}]'
+
+# Verify the current catalog (list of databases):
+curl http://localhost:8000/api/v1/databases
+```
+
+Deleting the last database intentionally returns the app to this onboarding state.
 
 ### Database Connection Pool Exhausted
 
@@ -701,7 +728,7 @@ A: Yes, but some features require Diagnostics Pack (Enterprise Edition only).
 A: 19c, 21c, 23c. Tested primarily on 23c Free.
 
 **Q: Can I monitor multiple databases?**
-A: Yes. Multi-database support is implemented: one `oracledb` pool per base, active base routed via `X-Database` header. Configure extra bases through the `DATABASES_JSON` env var (see `docs/FEATURES.md`) or the "Add database..." dialog in the header (persisted in `config/databases.json`). PRIMARY is always the `ORACLE_*` connection.
+A: Yes. Multi-database support is implemented: one `oracledb` pool per base, active base routed via `X-Database` header. Enroll databases from the **Connections** page (DBA role; the dialog tests connectivity, then `POST /api/v1/databases` creates the pool immediately and the first base becomes the default), and/or seed immutable connections via the `DATABASES_JSON` env var (see `docs/FEATURES.md`). Connections added in the UI are persisted in `config/databases.json` (shared across services via the `app_config` volume). With nothing configured, the app starts empty and shows the onboarding/Connections page.
 
 **Q: Is this production-ready?**
 A: MVP status. Review security, scaling, and HA before production use.

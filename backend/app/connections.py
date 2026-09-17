@@ -74,21 +74,13 @@ def _parse_env_json(raw: str) -> list[dict[str, Any]]:
 
 
 def load_connections() -> list[DBConnection]:
-    """Build the list of database connections from DATABASES_JSON.
+    """Build the list of database connections from DATABASES_JSON only.
 
-    The PRIMARY pool (single ORACLE_*) is always present as the fallback and is
-    marked as default unless any configured connection is explicitly flagged
-    is_default=true.
+    No database is configured by default: databases are enrolled at runtime
+    from the UI and persisted in DATABASES_FILE. DATABASES_JSON can still be
+    used to seed connections via environment variables (they are considered
+    immutable, like env-injected configuration).
     """
-    primary = DBConnection(
-        name=settings.ORACLE_DSN.split("/")[-1] or "PRIMARY",
-        host=settings.ORACLE_DSN.split(":")[0],
-        service=settings.ORACLE_DSN.split("/")[-1],
-        username=settings.ORACLE_USER,
-        password=settings.ORACLE_PASSWORD.get_secret_value(),
-        is_default=True,
-    )
-
     configured: list[DBConnection] = []
     for item in _parse_env_json(settings.DATABASES_JSON):
         conn = DBConnection.from_dict(item)
@@ -98,13 +90,10 @@ def load_connections() -> list[DBConnection]:
         configured.append(conn)
         logger.info("Configured database connection", name=conn.name, dsn=conn.dsn)
 
-    if not configured:
-        return [primary]
-
     default_present = any(conn.is_default for conn in configured)
-    if not default_present:
+    if not default_present and configured:
         configured[0].is_default = True
-    return [primary, *configured]
+    return configured
 
 
 def database_file_path() -> Path:
@@ -141,7 +130,7 @@ def is_env_configured(name: str) -> bool:
 
 
 def get_catalog() -> list[DBConnection]:
-    """Effective catalog = PRIMARY + env-configured, overridden/persisted by file.
+    """Effective catalog = env-seeded (DATABASES_JSON) + persisted file.
 
     Any entry in the file replaces the same-named entry from env (e.g. to edit
     credentials or add a database), and file-only entries are appended.

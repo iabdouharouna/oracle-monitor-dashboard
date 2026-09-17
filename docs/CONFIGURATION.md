@@ -16,10 +16,31 @@ The Oracle Monitor Dashboard uses a layered configuration approach:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `ORACLE_USER` | Oracle monitoring username | `monitor` |
-| `ORACLE_PASSWORD` | Oracle password | `secure_password_2024` |
-| `ORACLE_DSN` | Connection string (host:port/service) | `localhost:1521/FREE` |
 | `SECRET_KEY` | JWT signing key (min 32 chars) | `your-32-char-secret-key` |
+
+> `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN` are **legacy** (empty by default) and are no longer
+> required: they are not used to create a PRIMARY database at startup anymore. Databases are enrolled
+> from the UI (Connections page, DBA role) or seeded with the optional `DATABASES_JSON` variable below.
+
+### Database Enrollment (optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASES_JSON` | (empty) | JSON list of database connections. Seeded connections are **immutable** — they cannot be removed from the UI (HTTP 400). Without it, the list starts empty and the frontend shows the onboarding/Connections page. |
+
+Example:
+
+```json
+[
+  {"name": "FREE", "host": "oracle", "port": 1521, "serviceName": "FREE",
+   "username": "monitor", "password": "secret", "isDefault": true}
+]
+```
+
+Database credentials can also be persisted (without restart) from the UI: `POST /api/v1/databases`
+creates the dedicated Oracle pool right after a successful connection test; `DELETE /api/v1/databases/{name}`
+drops the pool. Connections are stored in `config/databases.json` (lazily created), which the services
+share via the `app_config` volume.
 
 ### Security
 
@@ -178,9 +199,10 @@ Alternative configuration via YAML (merged with env vars, env takes precedence).
 ```yaml
 # config/settings.yaml
 database:
-  user: "${ORACLE_USER}"
-  password: "${ORACLE_PASSWORD}"
-  dsn: "${ORACLE_DSN}"
+  # Legacy — no longer used to create the PRIMARY database at startup
+  user: "${ORACLE_USER:-}"
+  password: "${ORACLE_PASSWORD:-}"
+  dsn: "${ORACLE_DSN:-}"
   pool_min: 2
   pool_max: 20
   pool_increment: 2
@@ -245,10 +267,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     
-    # Oracle Database
-    ORACLE_USER: str
-    ORACLE_PASSWORD: SecretStr
-    ORACLE_DSN: str
+    # Oracle Database (legacy — empty by default, no longer used for the PRIMARY at startup)
+    ORACLE_USER: str = ""
+    ORACLE_PASSWORD: SecretStr = SecretStr("")
+    ORACLE_DSN: str = ""
     # ... pool settings
     
     # Redis
@@ -636,6 +658,10 @@ curl http://localhost:8000/health
 }
 ```
 
+> With no database enrolled, `/health` still returns HTTP 200 with
+> `"status": "healthy", "database": "not_configured"` — the container stays healthy and the Celery
+> monitoring tasks skip until a database is enrolled.
+
 ---
 
 ## Environment-Specific Configs
@@ -653,7 +679,8 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ```bash
 DEBUG=false
 LOG_LEVEL=INFO
-ORACLE_DSN=staging-db:1521/FREE
+# Redesignate the connection via DATABASES_JSON or the Connections page
+# DATABASES_JSON='[{"name":"FREE","host":"staging-db","port":1521,"serviceName":"FREE","username":"monitor","password":"...","isDefault":true}]'
 CORS_ORIGINS=https://staging.your-domain.com
 VITE_API_URL=https://api-staging.your-domain.com
 ```
@@ -663,11 +690,11 @@ VITE_API_URL=https://api-staging.your-domain.com
 ```bash
 DEBUG=false
 LOG_LEVEL=INFO
-ORACLE_DSN=prod-db:1521/FREE
+# Databases are enrolled from the UI (persisted in config/databases.json) or seeded via DATABASES_JSON
+# DATABASES_JSON='[{"name":"FREE","host":"prod-db","port":1521,"serviceName":"FREE","username":"monitor","password":"...","isDefault":true}]'
 CORS_ORIGINS=https://your-domain.com
 VITE_API_URL=https://api.your-domain.com
 SECRET_KEY=<from-secret-manager>
-ORACLE_PASSWORD=<from-secret-manager>
 ```
 
 ### Secret Management
@@ -676,20 +703,20 @@ ORACLE_PASSWORD=<from-secret-manager>
 ```yaml
 # docker-compose.yml
 secrets:
-  oracle_password:
-    file: ./secrets/oracle_password.txt
   secret_key:
     file: ./secrets/secret_key.txt
 
 services:
   backend:
     secrets:
-      - oracle_password
       - secret_key
     environment:
-      - ORACLE_PASSWORD_FILE=/run/secrets/oracle_password
       - SECRET_KEY_FILE=/run/secrets/secret_key
 ```
+
+> `ORACLE_PASSWORD` is no longer a startup requirement: credentials of monitored databases are carried
+> per connection in `config/databases.json` (UI enrollment) or in `DATABASES_JSON`. Protect that file/volume
+> and inject `DATABASES_JSON` via your secret store if you do not want it in `.env`.
 
 **External Secret Stores:**
 - AWS Secrets Manager

@@ -13,6 +13,12 @@ logger = structlog.get_logger(__name__)
 
 async def collect_db_metrics() -> None:
     """Collect core Oracle instance metrics and persist them."""
+    from app.connections import get_catalog
+
+    if not get_catalog():
+        logger.info("No Oracle database configured, DB metrics skipped")
+        return
+
     info = await InstanceService.get_database_info()
     cpu = await InstanceService.get_cpu_ratio()
     sessions = await SessionService.get_sessions()

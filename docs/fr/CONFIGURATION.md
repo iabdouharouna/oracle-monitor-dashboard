@@ -16,10 +16,31 @@ Le Oracle Monitor Dashboard utilise une approche de configuration en couches :
 
 | Variable | Description | Exemple |
 |----------|-------------|---------|
-| `ORACLE_USER` | Nom d'utilisateur Oracle de supervision | `monitor` |
-| `ORACLE_PASSWORD` | Mot de passe Oracle | `secure_password_2024` |
-| `ORACLE_DSN` | Chaîne de connexion (host:port/service) | `localhost:1521/FREE` |
 | `SECRET_KEY` | Clé de signature JWT (min 32 caractères) | `your-32-char-secret-key` |
+
+> `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN` sont **legacy** (vides par défaut) et ne sont plus
+> obligatoires : elles ne servent plus à créer une base PRIMARY au démarrage. Les bases sont enrolées
+> depuis l'IHM (page Connections, rôle DBA) ou initialisées via la variable optionnelle `DATABASES_JSON` ci-dessous.
+
+### Enrôlement des bases (optionnel)
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `DATABASES_JSON` | (vide) | Liste JSON de connexions de bases de données. Les connexions initialisées sont **immuables** — elles ne peuvent pas être supprimées depuis l'IHM (HTTP 400). Sans elle, la liste démarre vide et le frontend affiche la page d'onboarding/Connections. |
+
+Exemple :
+
+```json
+[
+  {"name": "FREE", "host": "oracle", "port": 1521, "serviceName": "FREE",
+   "username": "monitor", "password": "secret", "isDefault": true}
+]
+```
+
+Les identifiants de base peuvent aussi être persistés (sans redémarrage) depuis l'IHM : `POST /api/v1/databases`
+crée le pool Oracle dédié juste après un test de connexion réussi ; `DELETE /api/v1/databases/{name}`
+ferme le pool. Les connexions sont stockées dans `config/databases.json` (créé paresseusement), que les
+services partagent via le volume `app_config`.
 
 ### Sécurité
 
@@ -178,9 +199,10 @@ Configuration alternative via YAML (fusionnée avec les variables d'environnemen
 ```yaml
 # config/settings.yaml
 database:
-  user: "${ORACLE_USER}"
-  password: "${ORACLE_PASSWORD}"
-  dsn: "${ORACLE_DSN}"
+  # Legacy — ne sert plus à créer la base PRIMARY au démarrage
+  user: "${ORACLE_USER:-}"
+  password: "${ORACLE_PASSWORD:-}"
+  dsn: "${ORACLE_DSN:-}"
   pool_min: 2
   pool_max: 20
   pool_increment: 2
@@ -245,10 +267,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     
-    # Base de données Oracle
-    ORACLE_USER: str
-    ORACLE_PASSWORD: SecretStr
-    ORACLE_DSN: str
+    # Base de données Oracle (legacy — vides par défaut, plus utilisées pour la PRIMARY au démarrage)
+    ORACLE_USER: str = ""
+    ORACLE_PASSWORD: SecretStr = SecretStr("")
+    ORACLE_DSN: str = ""
     # ... paramètres du pool
     
     # Redis
@@ -636,6 +658,10 @@ curl http://localhost:8000/health
 }
 ```
 
+> Sans base enrolée, `/health` renvoie quand même HTTP 200 avec
+> `"status": "healthy", "database": "not_configured"` — le conteneur reste healthy et les tâches
+> Celery de monitoring se skippent jusqu'à ce qu'une base soit enrolée.
+
 ---
 
 ## Configurations par environnement
@@ -653,7 +679,8 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ```bash
 DEBUG=false
 LOG_LEVEL=INFO
-ORACLE_DSN=staging-db:1521/FREE
+# Rediriger la connexion via DATABASES_JSON ou la page Connections
+# DATABASES_JSON='[{"name":"FREE","host":"staging-db","port":1521,"serviceName":"FREE","username":"monitor","password":"...","isDefault":true}]'
 CORS_ORIGINS=https://staging.your-domain.com
 VITE_API_URL=https://api-staging.your-domain.com
 ```
@@ -663,11 +690,11 @@ VITE_API_URL=https://api-staging.your-domain.com
 ```bash
 DEBUG=false
 LOG_LEVEL=INFO
-ORACLE_DSN=prod-db:1521/FREE
+# Les bases sont enrolées depuis l'IHM (persistées dans config/databases.json) ou initialisées via DATABASES_JSON
+# DATABASES_JSON='[{"name":"FREE","host":"prod-db","port":1521,"serviceName":"FREE","username":"monitor","password":"...","isDefault":true}]'
 CORS_ORIGINS=https://your-domain.com
 VITE_API_URL=https://api.your-domain.com
 SECRET_KEY=<from-secret-manager>
-ORACLE_PASSWORD=<from-secret-manager>
 ```
 
 ### Gestion des secrets
@@ -676,20 +703,20 @@ ORACLE_PASSWORD=<from-secret-manager>
 ```yaml
 # docker-compose.yml
 secrets:
-  oracle_password:
-    file: ./secrets/oracle_password.txt
   secret_key:
     file: ./secrets/secret_key.txt
 
 services:
   backend:
     secrets:
-      - oracle_password
       - secret_key
     environment:
-      - ORACLE_PASSWORD_FILE=/run/secrets/oracle_password
       - SECRET_KEY_FILE=/run/secrets/secret_key
 ```
+
+> `ORACLE_PASSWORD` n'est plus une exigence au démarrage : les identifiants des bases supervisées sont portés
+> par connexion dans `config/databases.json` (enrollment IHM) ou dans `DATABASES_JSON`. Protégez ce fichier/volume
+> et injectez `DATABASES_JSON` via votre store de secrets si vous ne voulez pas le mettre dans `.env`.
 
 **Stores de secrets externes :**
 - AWS Secrets Manager

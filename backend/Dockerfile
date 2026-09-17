@@ -76,6 +76,9 @@ COPY --from=builder --chown=appuser:appuser /app/app ./app
 COPY --from=builder --chown=appuser:appuser /app/alembic.ini ./alembic.ini
 COPY --from=builder --chown=appuser:appuser /app/alembic ./alembic
 
+# Writable config dir for databases.json / thresholds.json persisted from the UI
+RUN mkdir -p /app/config && chown appuser:appuser /app/config
+
 USER appuser
 
 EXPOSE 8000

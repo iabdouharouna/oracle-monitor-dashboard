@@ -43,8 +43,14 @@ cp .env.example .env
 
 **Required variables:**
 ```bash
-ORACLE_PASSWORD=secure_password_here
 SECRET_KEY=your-32-character-secret-key-minimum
+```
+
+**Optional variables (legacy):**
+```bash
+# ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN are no longer used at startup.
+# Databases are enrolled via the UI (Connections page) or seeded with DATABASES_JSON.
+# DATABASES_JSON='[{"name":"FREE","host":"oracle","port":1521,"serviceName":"FREE","username":"monitor","password":"secret","isDefault":true}]'
 ```
 
 ### 3. Start Development Environment
@@ -75,6 +81,29 @@ make dev-logs
 
 ---
 
+## Database Enrollment
+
+At startup **no database is configured**. All monitored Oracle instances must be enrolled before the
+monitoring pages become usable:
+
+- **UI (default):** sign in with a DBA account and open the **Connections** page (route `/connections`,
+  also reachable from the sidebar or by clicking "Add database..." in the header). The dialog tests
+  connectivity first, then `POST /api/v1/databases` creates the Oracle pool immediately. The first
+  enrolled database becomes the default automatically; deleting the last one returns to the initial
+  "no database" state (onboarding UI).
+- **Seeding (optional):** set `DATABASES_JSON` to a JSON list of connections. Seeded databases are
+  immutable — they cannot be deleted from the UI (HTTP 400). If the variable is absent, the list
+  starts empty.
+- **Pool lifecycle:** pools are created on warm enrollment (`oracle_pool.create_pool`) and closed on
+  DELETE (`drop_pool`). A pool for a database persisted in `config/databases.json` is also created
+  lazily on first request if missing.
+- **Zero-database behavior:** `GET /health` returns HTTP 200 with
+  `{"status":"healthy","database":"not_configured"}`; the Celery tasks `collect_db_metrics`,
+  `check_all_thresholds` and `create_awr_snapshot` skip cleanly; every monitoring endpoint returns
+  HTTP 503 `DatabaseConnectionError` until a database is enrolled.
+
+---
+
 ## Docker Compose Architecture
 
 ### Production Stack (`docker-compose.yml`)
@@ -95,16 +124,17 @@ services:
   backend:         # FastAPI (2 workers)
     build: ./backend (production target)
     ports: [8000]
-    depends_on: [oracle, redis]
-    env: ORACLE_DSN=oracle:1521/FREE
+    depends_on: [redis]
+    volumes: [app_config:/app/config]
 
   celery-worker:   # Background tasks (2 replicas)
     command: celery worker --concurrency=4
     depends_on: [backend, redis]
+    volumes: [app_config:/app/config]
 
   celery-beat:     # Scheduler
     command: celery beat --scheduler PersistentScheduler
-    volumes: [celery_beat_data]
+    volumes: [celery_beat_data, app_config:/app/config]
 
   frontend:        # Nginx + React build
     build: ./frontend (production target)
@@ -161,13 +191,11 @@ sqlplus -L sys/password@//localhost:1521/FREE as sysdba @healthcheck.sql
 **Build:** Multi-stage Dockerfile
 - Base: `python:3.11-slim`
 - Dependencies: `uv` for fast installs
-- Production: Non-root user, compiled bytecode
+- Production: Non-root user, compiled bytecode; `/app/config` created and owned by `appuser`
+  (the shared `app_config` volume is mounted here so the backend can persist `config/databases.json`)
 
 **Environment Variables:**
 ```bash
-ORACLE_USER=monitor
-ORACLE_PASSWORD=${ORACLE_PASSWORD}
-ORACLE_DSN=oracle:1521/FREE
 ORACLE_POOL_MIN=2
 ORACLE_POOL_MAX=20
 REDIS_URL=redis://redis:6379/0
@@ -177,9 +205,16 @@ DEBUG=false
 LOG_LEVEL=INFO
 ```
 
+> `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN` are **legacy** and no longer required:
+> no database exists at startup. Databases are enrolled from the UI (Connections page, DBA role) or
+> seeded via the optional `DATABASES_JSON` env var (a JSON list of immutable connections). Without
+> either, the frontend shows the onboarding/Connections page.
+
 **Gunicorn Workers:** 2 (configurable via `WEB_CONCURRENCY`)
 
-**Health Check:** `GET /health` - checks Oracle + Redis connectivity
+**Health Check:** `GET /health` - reports `"healthy"` with `"database":"not_configured"` when no
+database is enrolled (container stays healthy); Celery tasks (`collect_db_metrics`,
+`check_all_thresholds`, `create_awr_snapshot`) skip cleanly.
 
 ---
 
@@ -246,18 +281,12 @@ git clone <repo-url> .
 
 # Generate secure secrets
 openssl rand -base64 32  # For SECRET_KEY
-openssl rand -base64 32  # For ORACLE_PASSWORD
 ```
 
 ### 2. Configure Production `.env`
 
 ```bash
 cat > .env << EOF
-# Oracle Database
-ORACLE_USER=monitor
-ORACLE_PASSWORD=your_secure_oracle_password
-ORACLE_DSN=oracle:1521/FREE
-
 # Security
 SECRET_KEY=your_32_char_secret_key
 ALGORITHM=HS256
@@ -271,6 +300,10 @@ REDIS_URL=redis://redis:6379/0
 HAS_DIAGNOSTICS_PACK=true
 DEBUG=false
 LOG_LEVEL=INFO
+
+# Optional: seed databases (immutable: not removable from the UI)
+# DATABASES_JSON='[{"name":"FREE","host":"oracle","port":1521,"serviceName":"FREE",
+#   "username":"monitor","password":"secret","isDefault":true}]'
 
 # Frontend (build time)
 VITE_API_URL=https://your-domain.com
@@ -375,21 +408,24 @@ docker exec oracle-monitor-db \
 
 ### Option 2: External Oracle Database
 
-Modify `docker-compose.yml`:
+Remove the embedded `oracle` service from `docker-compose.yml`, then enroll each external
+instance from the **Connections** page (DBA role) or via the `DATABASES_JSON` env var:
 
 ```yaml
 # Remove oracle service
-# Update backend environment:
+# Backend no longer needs ORACLE_DSN: databases carry their own connection settings
 backend:
   environment:
-    - ORACLE_DSN=your-oracle-host:1521/YOUR_SERVICE
-    # ... other vars
+    # Optional seed of immutable connections
+    - DATABASES_JSON=[{"name":"EXTERNAL","host":"your-oracle-host","port":1521,"serviceName":"YOUR_SERVICE","username":"monitor","password":"secret","isDefault":true}]
 ```
 
 **Requirements:**
 - Oracle 19c+ (21c/23c recommended)
 - Monitor user with grants (see `scripts/init-db.sql`)
 - Network connectivity from backend container
+- Each enrolled database is validated upfront (the UI tests the connection, then `POST /api/v1/databases`
+  creates the Oracle pool immediately); DELETE closes the pool.
 
 ---
 
@@ -460,7 +496,9 @@ Two JSON configs are written at runtime by the backend and must be included in b
 
 Both are created lazily; if a container is replaced without carrying these files, runtime-added
 databases and threshold overrides are lost (env defaults and the `DATABASES_JSON` env var remain
-the fallback).
+the fallback). In the default stack, the named volume `app_config` mounted on `/app/config` in the
+`backend`, `celery-worker` (x2) and `celery-beat` services shares `config/databases.json` between
+all of them and persists it across container recreation.
 
 ### Automated Backups
 
@@ -530,7 +568,7 @@ the **Alerts** page (active checks) and the **Monitoring** page (history).
 | Issue | Solution |
 |-------|----------|
 | Oracle container fails to start | Check `docker logs oracle-monitor-db`, ensure 8GB+ RAM |
-| Backend can't connect to Oracle | Verify `ORACLE_DSN`, check Oracle health check passes |
+| Backend can't connect to Oracle | Verify the database is enrolled (Connections page/`GET /api/v1/databases`), check host/service/credentials, Oracle health check passes |
 | Frontend shows "Network Error" | Check `VITE_API_URL`, verify backend accessible |
 | Celery tasks not running | Check Redis connectivity, `docker logs celery-worker` |
 | Metrics not in Prometheus | Verify `/metrics` endpoint, check Prometheus targets |

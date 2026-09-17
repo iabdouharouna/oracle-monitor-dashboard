@@ -4,7 +4,7 @@
 
 ## Vue d'ensemble
 
-L'Oracle Monitor Dashboard reproduit les capacités de surveillance de SQL Developer, organisé en 10 modules fonctionnels accessibles via la barre latérale de navigation.
+L'Oracle Monitor Dashboard reproduit les capacités de surveillance de SQL Developer, organisé en 12 modules fonctionnels accessibles via la barre latérale de navigation.
 
 ---
 
@@ -480,6 +480,30 @@ Résumé de la version, stack frontend/backend.
 
 ---
 
+## 12. Connections
+
+**Route :** `/connections`
+**API :** `GET/POST/DELETE /api/v1/databases`
+**Rôle :** DBA requis pour l'ajout et la suppression de bases
+
+### Description
+
+Au démarrage, **aucune base n'est configurée**. La page Connections est l'interface d'enrôlement : elle liste
+le catalogue effectif (variable d'env `DATABASES_JSON` + fichier persisté `config/databases.json`) et permet
+à un DBA d'ajouter ou de retirer les instances Oracle supervisées.
+
+- **Ajout :** le `AddDatabaseDialog` teste la connectivité avant d'enregistrer ; `POST /api/v1/databases`
+  (`routes/databases.py` → `oracle_pool.create_pool`) crée le pool Oracle dédié immédiatement après le test de
+  connexion réussi. La première base enrolée devient automatiquement la base par défaut.
+- **Suppression :** `DELETE /api/v1/databases/{name}` ferme le pool (`drop_pool`) et retire la connexion.
+  Supprimer la dernière base ramène l'application à l'état initial « aucune base » (onboarding).
+- **Bases initialisées** (depuis `DATABASES_JSON`) sont **immuables** : le DELETE renvoie HTTP 400.
+- **Garde :** les pages de monitoring sont encapsulées dans un composant `DatabaseGate` qui redirige vers
+  `/connections` quand aucune base n'existe ; le lien « Connections » est ajouté dans la barre latérale, et
+  l'en-tête conserve le sélecteur de base plus le bouton « Ajouter une base... ».
+
+---
+
 ## Fonctionnalités transversales
 
 ### Mises à jour en temps réel (WebSocket)
@@ -506,11 +530,14 @@ liste le message/sévérité/seuil de chaque alerte (état vide : « Pas d'alert
 
 ### Support multi-base de données
 **Sélecteur :** Sélecteur de base de données en direct dans l'en-tête alimenté par `GET /api/v1/databases`
-**Connexion :** Pool de connexions par base de données (un pool `oracledb` par base configurée)
+**Connexion :** Pool de connexions par base de données (un pool `oracledb` par base configurée ; pool créé à
+l'enrollment et paresseusement à la première requête, fermé à la suppression)
 **Routage :** Base de données active commutée par requête via l'en-tête `X-Database` (contextvar)
 **État :** Indicateurs En ligne/Hors ligne avec latence (probe `SELECT` en direct par base)
-**Gestion :** Dialogue « Ajouter une base... » qui teste la connectivité avant de persister (CRUD via POST/DELETE)
-**Config :** Variable d'env `DATABASES_JSON` (liste JSON) et/ou fichier persisté `config/databases.json` ; PRIMARY toujours issue de `ORACLE_*`
+**Gestion :** Dialogue « Ajouter une base... » (en-tête) ou page Connections (rôle DBA) ; le dialogue teste
+la connectivité avant de persister (CRUD via POST/DELETE)
+**Config :** Variable d'env `DATABASES_JSON` (liste JSON, immuable — non supprimable depuis l'IHM) et/ou fichier
+persisté `config/databases.json` (partagé entre les services via le volume `app_config`) ; plus de PRIMARY issue de `ORACLE_*`
 
 Exemple de `DATABASES_JSON` :
 ```json
