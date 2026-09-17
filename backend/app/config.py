@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     
-    ORACLE_USER: str = Field(..., description="Oracle username")
-    ORACLE_PASSWORD: SecretStr = Field(..., description="Oracle password")
-    ORACLE_DSN: str = Field(..., description="Oracle DSN (host:port/service)")
+    ORACLE_USER: str = Field(default="", description="Optional legacy Oracle username")
+    ORACLE_PASSWORD: SecretStr = Field(default=SecretStr(""), description="Optional legacy Oracle password")
+    ORACLE_DSN: str = Field(default="", description="Optional legacy Oracle DSN (host:port/service)")
     ORACLE_POOL_MIN: int = Field(default=2, ge=1, le=10)
     ORACLE_POOL_MAX: int = Field(default=20, ge=2, le=100)
     ORACLE_POOL_INCREMENT: int = Field(default=2, ge=1, le=10)

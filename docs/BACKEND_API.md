@@ -62,6 +62,13 @@ Authorization: Bearer <access_token>
   "code": "VALIDATION_ERROR"
 }
 
+// 503 Service Unavailable
+// Raised by monitoring endpoints when no database is enrolled/available
+{
+  "detail": "No database configured: enroll a database first",
+  "code": "DATABASE_CONNECTION_ERROR"
+}
+
 // 500 Internal Error
 {
   "detail": "Internal server error",
@@ -450,6 +457,59 @@ Executes `ALTER SYSTEM KILL SESSION '{sid},{serial}' IMMEDIATE`.
 On the frontend, the Sessions page exposes a **"Kill Selected (n)"** button (only for users whose
 role is `DBA`): the user selects session rows in the `DataTable` (selection ids are `sid,serial`),
 and the clients loops the kill mutation over every selected pair, then clears the selection.
+
+---
+
+### Databases
+
+Database enrollment endpoints. Require the DBA role (`get_current_dba`, 403 for `VIEWER`).
+At startup no database is configured; enroll instances from the UI Connections page (route `/connections`)
+or seed them with the `DATABASES_JSON` env var.
+
+#### GET `/databases`
+List the effective catalog: connections from `DATABASES_JSON` merged with the persisted
+`config/databases.json` file (`connections.get_catalog()`). With nothing configured the list is empty.
+
+**Response (200):**
+```json
+[
+  {
+    "name": "FREE",
+    "host": "oracle",
+    "port": 1521,
+    "service": "FREE",
+    "username": "monitor",
+    "is_default": true,
+    "is_active": true
+  }
+]
+```
+
+#### POST `/databases`
+Enroll a new monitored Oracle database. Connectivity is tested first; on success the dedicated Oracle pool
+is created immediately (`oracle_pool.create_pool`, in `routes/databases.py`) and the connection is persisted
+to `config/databases.json`. The first enrolled database automatically becomes the default.
+
+**Request:**
+```json
+{
+  "name": "FREE2",
+  "host": "oradb-free",
+  "port": 1521,
+  "service": "freepdb1",
+  "username": "monitor",
+  "password": "secret",
+  "is_default": false
+}
+```
+
+**Response (200):** the created connection (password omitted).
+
+#### DELETE `/databases/{database_name}`
+Remove an enrolled database: the pool is closed (`oracle_pool.drop_pool`) and the connection is dropped.
+
+- **400** if the database was seeded via `DATABASES_JSON` (seeded connections are immutable — not removable from the UI).
+- Deleting the last database returns the app to the "no database" onboarding state.
 
 ---
 

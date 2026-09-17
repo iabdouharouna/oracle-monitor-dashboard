@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.connections import DBConnection, get_catalog, save_database_file, is_env_configured
+from app.database import oracle_pool
 from app.api.deps import get_current_dba
 
 logger = structlog.get_logger(__name__)
@@ -103,6 +104,17 @@ async def add_database(payload: DatabaseCreate, _: None = Depends(get_current_db
             conn.is_default = False
     catalog.append(candidate)
     save_database_file(catalog)
+
+    try:
+        await oracle_pool.create_pool(candidate)
+        logger.info("Database pool created", name=payload.name, dsn=candidate.dsn)
+    except Exception as exc:
+        logger.exception("Database added but pool creation failed", name=payload.name, error=str(exc))
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot add '{payload.name}': {exc}",
+        )
+
     logger.info("Database added", name=payload.name, dsn=candidate.dsn)
     return await _serialize(candidate)
 
@@ -114,14 +126,27 @@ async def remove_database(database_name: str, _: None = Depends(get_current_dba)
     match = next((c for c in catalog if c.name == database_name), None)
     if not match:
         raise HTTPException(status_code=404, detail=f"Database '{database_name}' not found")
-    if match.is_default:
-        raise HTTPException(status_code=400, detail="Cannot remove the default database")
     if is_env_configured(database_name):
         raise HTTPException(
             status_code=400,
             detail=f"Database '{database_name}' is configured via environment - edit DATABASES_JSON instead",
         )
-    catalog = [c for c in catalog if c.name != database_name]
-    save_database_file(catalog)
+
+    if match.is_default:
+        for conn in catalog:
+            if conn.name != database_name:
+                conn.is_default = True
+                break
+
+    remaining = [c for c in catalog if c.name != database_name]
+    if not remaining:
+        from app.connections import database_file_path
+        path = database_file_path()
+        if path.exists():
+            path.write_text("[]", encoding="utf-8")
+    else:
+        save_database_file(remaining)
+
+    await oracle_pool.drop_pool(database_name)
     logger.info("Database removed", name=database_name)
     return {"name": database_name, "removed": True}

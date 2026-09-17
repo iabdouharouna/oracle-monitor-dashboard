@@ -25,6 +25,12 @@ class AlertService:
 
     @staticmethod
     async def check_thresholds() -> List[Dict[str, Any]]:
+        from app.connections import get_catalog
+
+        if not get_catalog():
+            logger.info("No Oracle database configured, threshold check skipped")
+            return []
+
         alerts = []
         t = AlertService.effective_thresholds()
 

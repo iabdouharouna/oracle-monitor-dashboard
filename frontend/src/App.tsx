@@ -8,6 +8,7 @@ import { useDatabases } from './api/hooks';
 import { setActiveDatabase } from './api/dbSelection';
 import { 
   Login, 
+  Connections,
   Dashboard, 
   InstanceViewer, 
   PerformanceHub, 
@@ -51,6 +52,20 @@ const PublicRoute: React.FC = () => {
   return isAuthenticated ? <Navigate to="/" replace /> : <Outlet />;
 };
 
+const DatabaseGate: React.FC = () => {
+  const { data: databases, isLoading } = useDatabases();
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        Loading...
+      </Box>
+    );
+  }
+
+  return databases && databases.length > 0 ? <Outlet /> : <Navigate to="/connections" replace />;
+};
+
 const App: React.FC = () => {
   const [timeRange, setTimeRange] = useState('1h');
   const { data: databases = [] } = useDatabases();
@@ -89,19 +104,22 @@ const App: React.FC = () => {
               onAddDatabase={() => setAddDialogOpen(true)}
             />
           }>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/instance" element={<InstanceViewer />} />
-          <Route path="/performance" element={<PerformanceHub />} />
-          <Route path="/sql-monitor" element={<SQLMonitor />} />
-          <Route path="/sessions" element={<Sessions />} />
-          <Route path="/storage" element={<Storage />} />
-          <Route path="/memory" element={<Memory />} />
-          <Route path="/waits" element={<WaitEvents />} />
-          <Route path="/live" element={<LiveMonitor />} />
-          <Route path="/alerts" element={<Alerts />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/monitoring" element={<Monitoring />} />
+          <Route path="/connections" element={<Connections />} />
           <Route path="/settings" element={<Settings />} />
+          <Route element={<DatabaseGate />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/instance" element={<InstanceViewer />} />
+            <Route path="/performance" element={<PerformanceHub />} />
+            <Route path="/sql-monitor" element={<SQLMonitor />} />
+            <Route path="/sessions" element={<Sessions />} />
+            <Route path="/storage" element={<Storage />} />
+            <Route path="/memory" element={<Memory />} />
+            <Route path="/waits" element={<WaitEvents />} />
+            <Route path="/live" element={<LiveMonitor />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/monitoring" element={<Monitoring />} />
+          </Route>
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

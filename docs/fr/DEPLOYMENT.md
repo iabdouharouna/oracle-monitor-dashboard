@@ -43,8 +43,14 @@ cp .env.example .env
 
 **Variables obligatoires :**
 ```bash
-ORACLE_PASSWORD=secure_password_here
 SECRET_KEY=your-32-character-secret-key-minimum
+```
+
+**Variables optionnelles (legacy) :**
+```bash
+# ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN ne sont plus utilisés au démarrage.
+# Les bases sont enrolées via l'IHM (page Connections) ou initialisées avec DATABASES_JSON.
+# DATABASES_JSON='[{"name":"FREE","host":"oracle","port":1521,"serviceName":"FREE","username":"monitor","password":"secret","isDefault":true}]'
 ```
 
 ### 3. Démarrer l'environnement de développement
@@ -75,6 +81,29 @@ make dev-logs
 
 ---
 
+## Enrôlement des bases de données
+
+Au démarrage, **aucune base n'est configurée**. Toutes les instances Oracle supervisées doivent être
+enrolées avant que les pages de monitoring ne soient utilisables :
+
+- **IHM (par défaut) :** connectez-vous avec un compte DBA et ouvrez la page **Connections** (route `/connections`,
+  accessible aussi depuis la barre latérale ou via « Ajouter une base... » dans l'en-tête). Le dialogue test
+  d'abord la connectivité, puis `POST /api/v1/databases` crée immédiatement le pool Oracle. La première base
+  enrolée devient automatiquement la base par défaut ; supprimer la dernière ramène à l'état initial « aucune base »
+  (IHM d'onboarding).
+- **Initialisation (optionnel) :** définissez `DATABASES_JSON` comme liste JSON de connexions. Les bases initialisées
+  sont immuables — elles ne peuvent pas être supprimées depuis l'IHM (HTTP 400). Si la variable est absente, la liste
+  démarre vide.
+- **Cycle de vie des pools :** les pools sont créés à chaud à l'enrollment (`oracle_pool.create_pool`) et fermés au
+  DELETE (`drop_pool`). Un pool pour une base persistée dans `config/databases.json` est aussi créé paresseusement
+  à la première requête s'il est absent.
+- **Comportement à zéro base :** `GET /health` renvoie HTTP 200 avec
+  `{"status":"healthy","database":"not_configured"}` ; les tâches Celery `collect_db_metrics`,
+  `check_all_thresholds` et `create_awr_snapshot` se skippent proprement ; chaque endpoint de monitoring renvoie
+  HTTP 503 `DatabaseConnectionError` tant qu'aucune base n'est enrolée.
+
+---
+
 ## Architecture Docker Compose
 
 ### Stack de production (`docker-compose.yml`)
@@ -95,16 +124,17 @@ services:
   backend:         # FastAPI (2 workers)
     build: ./backend (production target)
     ports: [8000]
-    depends_on: [oracle, redis]
-    env: ORACLE_DSN=oracle:1521/FREE
+    depends_on: [redis]
+    volumes: [app_config:/app/config]
 
   celery-worker:   # Tâches arrière-plan (2 réplicas)
     command: celery worker --concurrency=4
     depends_on: [backend, redis]
+    volumes: [app_config:/app/config]
 
   celery-beat:     # Planificateur
     command: celery beat --scheduler PersistentScheduler
-    volumes: [celery_beat_data]
+    volumes: [celery_beat_data, app_config:/app/config]
 
   frontend:        # Nginx + build React
     build: ./frontend (production target)
@@ -161,13 +191,11 @@ sqlplus -L sys/password@//localhost:1521/FREE as sysdba @healthcheck.sql
 **Build :** Dockerfile multi-étapes
 - Base : `python:3.11-slim`
 - Dépendances : `uv` pour des installations rapides
-- Production : Utilisateur non-root, bytecode compilé
+- Production : Utilisateur non-root, bytecode compilé ; `/app/config` créé et possédé par `appuser`
+  (le volume partagé `app_config` y est monté pour que le backend puisse persister `config/databases.json`)
 
 **Variables d'environnement :**
 ```bash
-ORACLE_USER=monitor
-ORACLE_PASSWORD=${ORACLE_PASSWORD}
-ORACLE_DSN=oracle:1521/FREE
 ORACLE_POOL_MIN=2
 ORACLE_POOL_MAX=20
 REDIS_URL=redis://redis:6379/0
@@ -177,9 +205,16 @@ DEBUG=false
 LOG_LEVEL=INFO
 ```
 
+> `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN` sont **legacy** et ne sont plus obligatoires :
+> aucune base n'existe au démarrage. Les bases sont enrolées depuis l'IHM (page Connections, rôle DBA)
+> ou initialisées via la variable d'env optionnelle `DATABASES_JSON` (liste JSON de connexions immuables).
+> Sans l'un ni l'autre, le frontend affiche la page d'onboarding/Connections.
+
 **Workers Gunicorn :** 2 (configurables via `WEB_CONCURRENCY`)
 
-**Vérification d'état :** `GET /health` - vérifie la connectivité Oracle + Redis
+**Vérification d'état :** `GET /health` - renvoie `"healthy"` avec `"database":"not_configured"` quand
+aucune base n'est enrolée (le conteneur reste healthy) ; les tâches Celery (`collect_db_metrics`,
+`check_all_thresholds`, `create_awr_snapshot`) se skippent proprement.
 
 ---
 
@@ -256,18 +291,12 @@ git clone <repo-url> .
 
 # Générer des secrets sécurisés
 openssl rand -base64 32  # Pour SECRET_KEY
-openssl rand -base64 32  # Pour ORACLE_PASSWORD
 ```
 
 ### 2. Configurer le fichier `.env` de production
 
 ```bash
 cat > .env << EOF
-# Oracle Database
-ORACLE_USER=monitor
-ORACLE_PASSWORD=your_secure_oracle_password
-ORACLE_DSN=oracle:1521/FREE
-
 # Sécurité
 SECRET_KEY=your_32_char_secret_key
 ALGORITHM=HS256
@@ -281,6 +310,10 @@ REDIS_URL=redis://redis:6379/0
 HAS_DIAGNOSTICS_PACK=true
 DEBUG=false
 LOG_LEVEL=INFO
+
+# Optionnel : initialiser les bases (immuables : non supprimables depuis l'IHM)
+# DATABASES_JSON='[{"name":"FREE","host":"oracle","port":1521,"serviceName":"FREE",
+#   "username":"monitor","password":"secret","isDefault":true}]'
 
 # Frontend (au moment du build)
 VITE_API_URL=https://your-domain.com
@@ -385,21 +418,24 @@ docker exec oracle-monitor-db \
 
 ### Option 2 : Base Oracle externe
 
-Modifier `docker-compose.yml` :
+Supprimez le service `oracle` embarqué de `docker-compose.yml`, puis enroler chaque instance externe
+depuis la page **Connections** (rôle DBA) ou via la variable d'env `DATABASES_JSON` :
 
 ```yaml
 # Supprimer le service oracle
-# Mettre à jour l'environnement du backend :
+# Le backend n'a plus besoin de ORACLE_DSN : chaque base porte ses propres paramètres de connexion
 backend:
   environment:
-    - ORACLE_DSN=your-oracle-host:1521/YOUR_SERVICE
-    # ... autres variables
+    # Initialisation optionnelle de connexions immuables
+    - DATABASES_JSON=[{"name":"EXTERNAL","host":"your-oracle-host","port":1521,"serviceName":"YOUR_SERVICE","username":"monitor","password":"secret","isDefault":true}]
 ```
 
 **Prérequis :**
 - Oracle 19c+ (21c/23c recommandé)
 - Utilisateur monitor avec les grants nécessaires (voir `scripts/init-db.sql`)
 - Connectivité réseau depuis le conteneur backend
+- Chaque base enrolée est validée en amont (l'IHM teste la connexion, puis `POST /api/v1/databases`
+  crée le pool Oracle immédiatement) ; le DELETE ferme le pool.
 
 ---
 
@@ -470,7 +506,8 @@ Deux fichiers JSON sont écrits à l'exécution par le backend et doivent être 
 
 Les deux sont créés paresseusement ; si un conteneur est remplacé sans emporter ces fichiers, les bases de données
 ajoutées à l'exécution et les remplacements de seuils sont perdus (les defaults env et la variable d'env `DATABASES_JSON` restent
-le filet de sécurité).
+le filet de sécurité). Dans la stack par défaut, le volume nommé `app_config` monté sur `/app/config` dans les services
+`backend`, `celery-worker` (x2) et `celery-beat` partage `config/databases.json` entre eux et le persiste à travers la recréation des conteneurs.
 
 ### Sauvegardes automatisées
 
@@ -540,7 +577,7 @@ la page **Alerts** (checks actifs) et la page **Monitoring** (historique).
 | Problème | Solution |
 |----------|----------|
 | Le conteneur Oracle ne démarre pas | Vérifier `docker logs oracle-monitor-db`, s'assurer de 8Go+ RAM |
-| Le backend ne peut pas se connecter à Oracle | Vérifier `ORACLE_DSN`, vérifier que le health check Oracle passe |
+| Le backend ne peut pas se connecter à Oracle | Vérifier que la base est enrolée (page Connections/`GET /api/v1/databases`), vérifier hôte/service/identifiants, vérifier que le health check Oracle passe |
 | Le frontend affiche « Network Error » | Vérifier `VITE_API_URL`, vérifier l'accessibilité du backend |
 | Les tâches Celery ne s'exécutent pas | Vérifier la connectivité Redis, `docker logs celery-worker` |
 | Les métriques n'apparaissent pas dans Monitoring | Vérifier Redis (`KEYS 'metrics:*'`), logs Celery, psutil installé |

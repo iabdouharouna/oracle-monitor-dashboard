@@ -24,6 +24,9 @@ curl http://localhost:8000/health
   "version": "1.0.0"
 }
 
+# Rien n'est configuré :
+# {"status": "healthy", "database": "not_configured", ...}  (HTTP 200 — le conteneur reste healthy)
+
 # Metrics
 curl http://localhost:8000/metrics
 ```
@@ -61,7 +64,7 @@ make db-logs
 | Mémoire insuffisante | Assurez-vous que 8 Go+ de RAM sont alloués à Docker. Oracle 23c nécessite ~4 Go minimum. |
 | Port 1521 déjà utilisé | Vérifiez `lsof -i :1521` et arrêtez le processus en conflit |
 | Volume corrompu | `docker volume rm oracle-monitor-dashboard_oracle_data` puis redémarrez |
-| Mot de passe invalide | Vérifiez que `ORACLE_PASSWORD` dans `.env` respecte les exigences Oracle |
+| Mot de passe invalide | Vérifiez la variable de mot de passe du conteneur Oracle respecte les exigences Oracle |
 
 **Débogage :**
 ```bash
@@ -140,6 +143,8 @@ make backend-logs
 # 1. Missing .env file
 cp .env.example .env
 # Edit .env with required values
+# (SECRET_KEY est le seul secret obligatoire ;
+# ORACLE_USER/ORACLE_PASSWORD/ORACLE_DSN sont legacy et inutiles au démarrage)
 
 # 2. Invalid SECRET_KEY (must be 32+ chars)
 # Generate: openssl rand -base64 32
@@ -150,6 +155,29 @@ cp .env.example .env
 # 4. Dependency conflicts
 # Rebuild: make dev-build
 ```
+
+### Aucune base configurée / les endpoints de monitoring renvoient 503
+
+**Symptômes :**
+- Les pages de monitoring redirigent vers la page Connections (onboarding)
+- Les appels API de monitoring échouent avec HTTP 503 `DatabaseConnectionError`
+- `GET /health` → `"database": "not_configured"` (toujours HTTP 200)
+- Les tâches Celery `collect_db_metrics`, `check_all_thresholds`, `create_awr_snapshot` se skippent silencieusement
+
+**Cause :** aucune base n'est enrolée. C'est l'**état initial normal** — au démarrage, plus aucune PRIMARY
+n'est forcée (les variables legacy `ORACLE_USER`/`ORACLE_PASSWORD`/`ORACLE_DSN` sont ignorées).
+
+**Solutions :**
+
+```bash
+# Enroler des bases depuis l'IHM (page Connections, rôle DBA), ou les initialiser avec :
+# DATABASES_JSON='[{"name":"FREE","host":"oracle","port":1521,"serviceName":"FREE","username":"monitor","password":"...","isDefault":true}]'
+
+# Vérifier le catalogue courant (liste des bases) :
+curl http://localhost:8000/api/v1/databases
+```
+
+Supprimer la dernière base renvoie volontairement l'application à cet état d'onboarding.
 
 ### Pool de connexions à la base épuisé
 
@@ -701,7 +729,7 @@ R : Oui, mais certaines fonctionnalités nécessitent le Diagnostics Pack (uniqu
 R : 19c, 21c, 23c. Testé principalement sur 23c Free.
 
 **Q : Puis-je superviser plusieurs bases de données ?**
-R : Oui. Le support multi-base de données est implémenté : un pool `oracledb` par base, la base active est routée via l'en-tête `X-Database`. Configurez des bases supplémentaires via la variable d'environnement `DATABASES_JSON` (voir `docs/FEATURES.md`) ou le dialogue « Ajouter une base de données... » dans l'en-tête (persisté dans `config/databases.json`). PRIMARY est toujours la connexion `ORACLE_*`.
+R : Oui. Le support multi-base de données est implémenté : un pool `oracledb` par base, la base active est routée via l'en-tête `X-Database`. Enroler les bases depuis la page **Connections** (rôle DBA ; le dialogue teste la connectivité, puis `POST /api/v1/databases` crée le pool immédiatement et la première base devient la base par défaut), et/ou initialiser des connexions immuables via la variable d'env `DATABASES_JSON` (voir `docs/FEATURES.md`). Les connexions ajoutées dans l'IHM sont persistées dans `config/databases.json` (partagé entre les services via le volume `app_config`). Sans rien configurer, l'application démarre vide et affiche la page d'onboarding/Connections.
 
 **Q : Est-ce prêt pour la production ?**
 R : Statut MVP. Revoyez la sécurité, la montée en charge et la haute disponibilité avant une utilisation en production.

@@ -62,6 +62,13 @@ Authorization: Bearer <access_token>
   "code": "VALIDATION_ERROR"
 }
 
+// 503 Service Unavailable
+// Levé par les endpoints de monitoring quand aucune base n'est enrolée/disponible
+{
+  "detail": "No database configured: enroll a database first",
+  "code": "DATABASE_CONNECTION_ERROR"
+}
+
 // 500 Internal Error
 {
   "detail": "Internal server error",
@@ -450,6 +457,59 @@ Exécute `ALTER SYSTEM KILL SESSION '{sid},{serial}' IMMEDIATE`.
 Sur le frontend, la page Sessions expose un bouton **"Kill Selected (n)"** (uniquement pour les utilisateurs dont le
 rôle est `DBA`) : l'utilisateur sélectionne des lignes de session dans le `DataTable` (les identifiants de sélection sont `sid,serial`),
 et le client boucle sur la mutation de kill pour chaque paire sélectionnée, puis efface la sélection.
+
+---
+
+### Bases de données
+
+Endpoints d'enrôlement des bases de données. Nécessitent le rôle DBA (`get_current_dba`, 403 pour `VIEWER`).
+Au démarrage, aucune base n'est configurée ; enroler les instances depuis la page Connections de l'IHM (route `/connections`)
+ou les initialiser via la variable d'env `DATABASES_JSON`.
+
+#### GET `/databases`
+Liste le catalogue effectif : connexions depuis `DATABASES_JSON` fusionnées avec le fichier persisté
+`config/databases.json` (`connections.get_catalog()`). Sans rien configurer, la liste est vide.
+
+**Réponse (200) :**
+```json
+[
+  {
+    "name": "FREE",
+    "host": "oracle",
+    "port": 1521,
+    "service": "FREE",
+    "username": "monitor",
+    "is_default": true,
+    "is_active": true
+  }
+]
+```
+
+#### POST `/databases`
+Envôle une nouvelle base Oracle supervisée. La connectivité est testée d'abord ; en cas de succès, le pool Oracle dédié
+est créé immédiatement (`oracle_pool.create_pool`, dans `routes/databases.py`) et la connexion est persistée
+dans `config/databases.json`. La première base enrolée devient automatiquement la base par défaut.
+
+**Requête :**
+```json
+{
+  "name": "FREE2",
+  "host": "oradb-free",
+  "port": 1521,
+  "service": "freepdb1",
+  "username": "monitor",
+  "password": "secret",
+  "is_default": false
+}
+```
+
+**Réponse (200) :** la connexion créée (mot de passe omis).
+
+#### DELETE `/databases/{database_name}`
+Retire une base enrolée : le pool est fermé (`oracle_pool.drop_pool`) et la connexion est supprimée.
+
+- **400** si la base a été initialisée via `DATABASES_JSON` (connexions initialisées = immuables — non supprimables depuis l'IHM).
+- Supprimer la dernière base ramène l'application à l'état « aucune base » (onboarding).
 
 ---
 

@@ -16,6 +16,11 @@ def create_awr_snapshot(self) -> dict:
             logger.info("AWR snapshot skipped: Diagnostics Pack disabled")
             return {"status": "skipped", "reason": "HAS_DIAGNOSTICS_PACK=false"}
 
+        from app.connections import get_catalog
+        if not get_catalog():
+            logger.info("AWR snapshot skipped: no database configured")
+            return {"status": "skipped", "reason": "no database configured"}
+
         await init_db()
         try:
             from app.database import oracle_pool

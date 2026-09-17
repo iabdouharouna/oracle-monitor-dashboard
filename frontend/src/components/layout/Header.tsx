@@ -71,14 +71,12 @@ export const Header: React.FC<{
             Oracle Monitor Dashboard
           </Typography>
           
-          {databases.length > 0 && (
-            <DatabaseSelector
-              databases={databases}
-              selected={selectedDatabase}
-              onChange={onDatabaseChange || (() => {})}
-              onAdd={onAddDatabase}
-            />
-          )}
+          <DatabaseSelector
+            databases={databases}
+            selected={selectedDatabase}
+            onChange={onDatabaseChange || (() => {})}
+            onAdd={user?.role === 'DBA' ? onAddDatabase : undefined}
+          />
           
           <TimeRangeSelector
             value={timeRange || '1h'}

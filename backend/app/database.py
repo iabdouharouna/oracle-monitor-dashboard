@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
 from app.config import settings
-from app.connections import DBConnection, load_connections
+from app.connections import DBConnection, load_connections, get_catalog
+from app.core.exceptions import DatabaseConnectionError
 
 logger = structlog.get_logger(__name__)
 
@@ -14,14 +15,14 @@ active_database: contextvars.ContextVar[str] = contextvars.ContextVar("active_da
 
 def resolve_active_name() -> str:
     name = active_database.get()
-    connections = load_connections()
+    connections = get_catalog()
     names = {conn.name for conn in connections}
     if name in names:
         return name
     for conn in connections:
         if conn.is_default:
             return conn.name
-    return connections[0].name if connections else "PRIMARY"
+    return connections[0].name if connections else ""
 
 
 class OraclePool:
@@ -37,37 +38,66 @@ class OraclePool:
             settings.ORACLE_TIMEOUT,
         )
 
-    async def initialize(self) -> None:
+    async def _create_pool(self, conn: DBConnection) -> None:
         min_p, max_p, inc, timeout = self._pool_settings()
-        for conn in load_connections():
+        logger.info(
+            "Creating Oracle connection pool",
+            db=conn.name,
+            user=conn.username,
+            dsn=conn.dsn,
+            min=min_p,
+            max=max_p,
+        )
+        pool = oracledb.create_pool_async(
+            user=conn.username,
+            password=conn.password,
+            dsn=conn.dsn,
+            min=min_p,
+            max=max_p,
+            increment=inc,
+            timeout=timeout,
+        )
+        try:
+            async with pool.acquire() as test_conn:
+                async with test_conn.cursor() as cursor:
+                    await cursor.execute("SELECT 1 FROM DUAL")
+                    result = await cursor.fetchone()
+                    logger.info("Oracle connection test successful", db=conn.name, result=result)
+        except Exception as exc:
+            await pool.close()
+            logger.warning("Oracle connection test failed, pool disabled", db=conn.name, error=str(exc))
+            raise DatabaseConnectionError(f"Connection to {conn.dsn} failed") from exc
+        self._pools[conn.name] = pool
+
+    async def initialize(self) -> None:
+        for conn in get_catalog():
             if conn.name in self._pools:
                 continue
-            logger.info(
-                "Initializing Oracle connection pool",
-                db=conn.name,
-                user=conn.username,
-                dsn=conn.dsn,
-                min=min_p,
-                max=max_p,
-            )
-            self._pools[conn.name] = oracledb.create_pool_async(
-                user=conn.username,
-                password=conn.password,
-                dsn=conn.dsn,
-                min=min_p,
-                max=max_p,
-                increment=inc,
-                timeout=timeout,
-            )
             try:
-                async with self._pools[conn.name].acquire() as test_conn:
-                    async with test_conn.cursor() as cursor:
-                        await cursor.execute("SELECT 1 FROM DUAL")
-                        result = await cursor.fetchone()
-                        logger.info("Oracle connection test successful", db=conn.name, result=result)
-            except Exception as exc:
-                await self._pools.pop(conn.name).close()
-                logger.warning("Oracle connection test failed, pool disabled", db=conn.name, error=str(exc))
+                await self._create_pool(conn)
+            except DatabaseConnectionError:
+                continue
+
+    async def create_pool(self, conn: DBConnection) -> None:
+        """Create (or refresh) the pool for a single database, called on enrollment."""
+        existing = self._pools.get(conn.name)
+        if existing is not None:
+            try:
+                await existing.close()
+            except Exception:
+                logger.exception("Error closing previous pool", db=conn.name)
+            self._pools.pop(conn.name, None)
+        await self._create_pool(conn)
+
+    async def drop_pool(self, name: str) -> None:
+        """Close and remove the pool for a database, called on removal."""
+        pool = self._pools.pop(name, None)
+        if pool is not None:
+            try:
+                await pool.close()
+                logger.info("Oracle connection pool removed", db=name)
+            except Exception:
+                logger.exception("Error closing pool", db=name)
 
     async def close(self) -> None:
         for name, pool in self._pools.items():
@@ -78,28 +108,33 @@ class OraclePool:
                 logger.exception("Error closing pool", db=name)
         self._pools.clear()
 
-    def _get_pool(self) -> oracledb.AsyncConnectionPool:
-        if not self._pools:
-            raise RuntimeError("Oracle pools are not initialized")
-        name = resolve_active_name()
-        return self._pools[name]
-
     @asynccontextmanager
     async def acquire(self, db: str = "") -> AsyncGenerator[oracledb.AsyncConnection, None]:
-        if not self._pools:
-            await self.initialize()
         if db:
             token = active_database.set(db)
             try:
-                pool = self._get_pool()
+                pool = await self._resolve_pool()
                 async with pool.acquire() as conn:
                     yield conn
             finally:
                 active_database.reset(token)
             return
-        pool = self._get_pool()
+        pool = await self._resolve_pool()
         async with pool.acquire() as conn:
             yield conn
+
+    async def _resolve_pool(self) -> oracledb.AsyncConnectionPool:
+        name = resolve_active_name()
+        pool = self._pools.get(name) if name else None
+        if pool is None:
+            if not self._pools:
+                await self.initialize()
+            pool = self._pools.get(name)
+        if pool is None:
+            raise DatabaseConnectionError(
+                "No Oracle database available" if not name else f"Database pool '{name}' is not available"
+            )
+        return pool
 
     async def execute_query(
         self,

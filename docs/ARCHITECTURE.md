@@ -168,6 +168,26 @@ Client Request
 └─────────────────┘
 ```
 
+### Database Enrollment & Connection Pools
+
+At startup **no database is configured** (the legacy `ORACLE_USER`/`ORACLE_PASSWORD`/`ORACLE_DSN`
+settings are empty and no PRIMARY is created). Databases are obtained from two sources, merged in
+`connections.get_catalog()`:
+
+- `DATABASES_JSON` (env, optional) — seeded connections, treated as immutable (not removable from the UI).
+- `config/databases.json` — connections added at runtime via `POST /api/v1/databases` (UI enrollment,
+  DBA role), persisted on the shared `app_config` volume.
+
+Oracle pools are per-database and created **on demand**: `POST /api/v1/databases` (`routes/databases.py`)
+calls `oracle_pool.create_pool` right after the connection test, `DELETE` calls `drop_pool`, and a pool
+for a persisted database is created lazily on first request if missing. The first enrolled database becomes
+the default automatically; deleting the last one returns to the empty (onboarding) state.
+
+On the frontend, the **Connections** page (route `/connections`, linked in the sidebar) handles
+enrollment; monitoring pages are wrapped in a `DatabaseGate` component that redirects to `/connections`
+when no database exists. The header keeps the database selector and an "Add database..." button (again
+DBA-only for add/remove).
+
 ## Frontend Architecture
 
 ```
@@ -211,6 +231,7 @@ frontend/
 │   │       ├── Footer.tsx
 │   │       └── PageLayout.tsx
 │   ├── pages/                  # Page components
+│   │   ├── Connections.tsx     # Database enrollment (onboarding when no DB)
 │   │   ├── Dashboard.tsx
 │   │   ├── InstanceViewer.tsx
 │   │   ├── PerformanceHub.tsx
@@ -442,7 +463,7 @@ host_cpu_pct, host_ram_pct, host_ram_used_mb, host_disk_pct
 
 | Endpoint | Checks |
 |----------|--------|
-| `GET /health` | Oracle connectivity, Redis connectivity |
+| `GET /health` | Redis connectivity; returns `"database":"not_configured"` (HTTP 200) when no database is enrolled |
 | `GET /api/v1/metrics/history` | Time-series metrics query |
 | Docker HEALTHCHECK | Container-level liveness |
 

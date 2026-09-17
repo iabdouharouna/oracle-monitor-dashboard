@@ -95,8 +95,15 @@ Required grants in `scripts/init-db.sql`.
 ## Environment Variables
 
 Critical (required):
-- `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN`
 - `SECRET_KEY` (32+ chars)
+
+Databases (no database configured at startup):
+- Databases are enrolled from the UI (Connections page) and persisted in `config/databases.json`
+  (shared across backend/workers/beat via the `app_config` volume).
+- Optional seeding: `DATABASES_JSON` (JSON list of `{name, host, port, service, username,
+  password, is_default, is_active}`). Seed entries are immutable from the UI.
+- `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_DSN` are optional legacy vars, no longer used to
+  create a PRIMARY database at startup.
 
 Feature flags:
 - `HAS_DIAGNOSTICS_PACK=true` - Enable AWR/DBA_HIST

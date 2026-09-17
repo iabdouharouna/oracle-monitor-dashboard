@@ -168,6 +168,26 @@ Requête client
 └─────────────────┘
 ```
 
+### Enrôlement des bases de données et pools de connexion
+
+Au démarrage, **aucune base n'est configurée** (les paramètres legacy `ORACLE_USER`/`ORACLE_PASSWORD`/
+`ORACLE_DSN` sont vides et aucune PRIMARY n'est créée). Les bases proviennent de deux sources, fusionnées
+dans `connections.get_catalog()` :
+
+- `DATABASES_JSON` (env, optionnel) — connexions initialisées, traitées comme immuables (non supprimables depuis l'IHM).
+- `config/databases.json` — connexions ajoutées à l'exécution via `POST /api/v1/databases` (enrollment IHM,
+  rôle DBA), persistées sur le volume partagé `app_config`.
+
+Les pools Oracle sont par base et créés **à la demande** : `POST /api/v1/databases` (`routes/databases.py`)
+appelle `oracle_pool.create_pool` juste après le test de connexion, le `DELETE` appelle `drop_pool`, et un pool
+pour une base persistée est créé paresseusement à la première requête s'il est absent. La première base enrolée
+devient automatiquement la base par défaut ; supprimer la dernière ramène à l'état vide (onboarding).
+
+Côté frontend, la page **Connections** (route `/connections`, accessible depuis la barre latérale) gère
+l'enrôlement ; les pages de monitoring sont encapsulées dans un composant `DatabaseGate` qui redirige vers
+`/connections` quand aucune base n'existe. L'en-tête conserve le sélecteur de base et un bouton
+« Ajouter une base... » (l'ajout/suppression reste réservé au rôle DBA).
+
 ## Architecture du frontend
 
 ```
@@ -211,6 +231,7 @@ frontend/
 │   │       ├── Footer.tsx
 │   │       └── PageLayout.tsx
 │   ├── pages/                  # Composants de pages
+│   │   ├── Connections.tsx     # Enrôlement des bases (onboarding quand aucune base)
 │   │   ├── Dashboard.tsx
 │   │   ├── InstanceViewer.tsx
 │   │   ├── PerformanceHub.tsx
@@ -442,7 +463,7 @@ host_cpu_pct, host_ram_pct, host_ram_used_mb, host_disk_pct
 
 | Point de terminaison | Vérifications |
 |----------------------|---------------|
-| `GET /health` | Connectivité Oracle, connectivité Redis |
+| `GET /health` | Connectivité Redis ; renvoie `"database":"not_configured"` (HTTP 200) quand aucune base n'est enrolée |
 | `GET /api/v1/metrics/history` | Requête de séries temporelles |
 | Docker HEALTHCHECK | Vérification de vie au niveau conteneur |
 

@@ -4,7 +4,7 @@
 
 ## Overview
 
-The Oracle Monitor Dashboard replicates the monitoring capabilities of SQL Developer, organized into 10 functional modules accessible via the sidebar navigation.
+The Oracle Monitor Dashboard replicates the monitoring capabilities of SQL Developer, organized into 12 functional modules accessible via the sidebar navigation.
 
 ---
 
@@ -480,6 +480,30 @@ Version, frontend/backend stack summary.
 
 ---
 
+## 12. Connections
+
+**Route:** `/connections`  
+**API:** `GET/POST/DELETE /api/v1/databases`  
+**Role:** DBA required for adding and removing databases
+
+### Description
+
+At startup **no database is configured**. The Connections page is the enrollment user interface: it lists
+the effective catalog (`DATABASES_JSON` env var + persisted `config/databases.json`) and lets a DBA add or
+remove the monitored Oracle instances.
+
+- **Add:** the `AddDatabaseDialog` tests connectivity before saving; `POST /api/v1/databases`
+  (`routes/databases.py` → `oracle_pool.create_pool`) creates the dedicated Oracle pool immediately after
+  the successful connection test. The first enrolled database automatically becomes the default.
+- **Remove:** `DELETE /api/v1/databases/{name}` closes the pool (`drop_pool`) and removes the connection.
+  Deleting the last database returns the app to the initial "no database" onboarding state.
+- **Seeded databases** (from `DATABASES_JSON`) are **immutable**: DELETE returns HTTP 400.
+- **Gate:** monitoring pages are wrapped in a `DatabaseGate` component that redirects to `/connections`
+  whenever no database exists; the "Connections" link is added to the sidebar, and the header keeps the
+  database selector plus the "Add database..." button.
+
+---
+
 ## Cross-Cutting Features
 
 ### Real-time Updates (WebSocket)
@@ -506,11 +530,14 @@ lists each alert's message/severity/threshold (empty state: "No active threshold
 
 ### Multi-database Support
 **Selector:** Live database selector in header fed by `GET /api/v1/databases`  
-**Connection:** Per-database connection pooling (one `oracledb` pool per configured base)  
+**Connection:** Per-database connection pooling (one `oracledb` pool per configured base; pool created on
+enrollment and lazily on first request, dropped on delete)  
 **Routing:** Active database switched per-request via `X-Database` header (contextvar)  
 **Status:** Real Online/Offline indicators with latency (live `SELECT` probe per base)  
-**Management:** "Add database..." dialog tests connectivity before persisting (CRUD via POST/DELETE)  
-**Config:** `DATABASES_JSON` env var (JSON list) and/or persisted `config/databases.json`; PRIMARY always from `ORACLE_*`
+**Management:** "Add database..." dialog (header) or the Connections page (DBA role); the dialog tests
+connectivity before persisting (CRUD via POST/DELETE)  
+**Config:** `DATABASES_JSON` env var (JSON list, immutable — not removable from the UI) and/or persisted
+`config/databases.json` (shared across services via the `app_config` volume); no PRIMARY from `ORACLE_*` anymore
 
 Example `DATABASES_JSON`:
 ```json

@@ -79,25 +79,31 @@ def create_app() -> FastAPI:
     async def health_check():
         from app.database import oracle_pool
         from app.redis import redis_client
-        
+        from app.connections import get_catalog
+
+        catalog = get_catalog()
+        db_state = "not_configured"
         db_healthy = True
-        redis_healthy = True
-        
-        try:
-            await oracle_pool.execute_scalar("SELECT 1 FROM DUAL")
-        except Exception:
+        if catalog:
             db_healthy = False
-        
+            try:
+                await oracle_pool.execute_scalar("SELECT 1 FROM DUAL")
+                db_healthy = True
+                db_state = "connected"
+            except Exception:
+                db_state = "disconnected"
+
+        redis_healthy = True
         try:
             redis_healthy = await redis_client.health_check()
         except Exception:
             redis_healthy = False
-        
+
         status = "healthy" if db_healthy and redis_healthy else "degraded"
-        
+
         return {
             "status": status,
-            "database": "connected" if db_healthy else "disconnected",
+            "database": db_state,
             "redis": "connected" if redis_healthy else "disconnected",
             "version": "1.0.0",
         }
