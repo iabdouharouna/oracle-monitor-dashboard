@@ -57,6 +57,7 @@ GRANT SELECT ON dba_tablespaces TO monitor;
 GRANT SELECT ON dba_data_files TO monitor;
 GRANT SELECT ON dba_temp_files TO monitor;
 GRANT SELECT ON dba_free_space TO monitor;
+GRANT SELECT ON dba_tablespace_usage_metrics TO monitor;
 GRANT SELECT ON dba_segments TO monitor;
 GRANT SELECT ON dba_objects TO monitor;
 GRANT SELECT ON dba_hist_snapshot TO monitor;
@@ -229,52 +230,60 @@ FROM v$librarycache
 ---
 
 ### 9. Tablespaces
-**Vue :** `dba_tablespaces`, `dba_data_files`, `dba_free_space`, `dba_temp_files`, `v$temp_space_header`
+**Vue :** `dba_tablespaces`, `dba_tablespace_usage_metrics`, `dba_data_files`, `dba_free_space`
 
 ```sql
--- Permanent and Undo tablespaces
-SELECT 
+-- Primary query: sizes and usage come from dba_tablespace_usage_metrics (fast,
+-- pre-aggregated). Autoextend/max size still come from dba_data_files.
+SELECT
     t.tablespace_name,
     t.contents,
     t.status,
+    ROUND(NVL(m.tablespace_size, 0) / 1024 / 1024, 2) as size_mb,
+    ROUND(NVL(m.used_space, 0) / 1024 / 1024, 2) as used_mb,
+    ROUND((NVL(m.tablespace_size, 0) - NVL(m.used_space, 0)) / 1024 / 1024, 2) as free_mb,
+    ROUND(NVL(m.used_percent, 0), 1) as pct_used,
+    NVL(a.autoextensible, 'NO') as autoextensible,
+    ROUND(NVL(a.maxbytes, 0) / 1024 / 1024, 2) as max_size_mb,
+    CASE WHEN m.tablespace_name IS NULL THEN 1 ELSE 0 END as legacy_fallback
+FROM dba_tablespaces t
+LEFT JOIN dba_tablespace_usage_metrics m
+    ON m.tablespace_name = t.tablespace_name
+LEFT JOIN (
+    SELECT tablespace_name,
+           MAX(autoextensible) as autoextensible,
+           MAX(maxbytes) as maxbytes
+    FROM dba_data_files
+    GROUP BY tablespace_name
+) a ON a.tablespace_name = t.tablespace_name
+```
+
+Certains tablespaces (notamment les UNDO inactifs) sont absents de
+`dba_tablespace_usage_metrics`. Quand `legacy_fallback = 1`, le service lance une
+seconde requête ciblée pour ce tablespace. Le bind `:name` permet à Oracle de
+pousser le prédicat dans `dba_free_space` (~0,02 s) ; un `IN (subquery)` force au
+contraire un scan complet (7 s+).
+
+```sql
+-- Fallback query, run once per tablespace with legacy_fallback = 1
+SELECT
     ROUND(SUM(d.bytes) / 1024 / 1024, 2) as size_mb,
     ROUND(SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / 1024 / 1024, 2) as used_mb,
     ROUND(SUM(NVL(f.bytes, 0)) / 1024 / 1024, 2) as free_mb,
-    ROUND(100 * SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / NULLIF(SUM(d.bytes), 0), 1) as pct_used,
-    MAX(d.autoextensible) as autoextensible,
-    MAX(d.maxbytes) / 1024 / 1024 as max_size_mb
+    ROUND(
+        100 * SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / NULLIF(SUM(d.bytes), 0), 1
+    ) as pct_used
 FROM dba_tablespaces t
-LEFT JOIN dba_data_files d ON t.tablespace_name = d.tablespace_name
+LEFT JOIN dba_data_files d
+    ON t.tablespace_name = d.tablespace_name
 LEFT JOIN (
     SELECT tablespace_name, SUM(bytes) as bytes
     FROM dba_free_space
+    WHERE tablespace_name = :name
     GROUP BY tablespace_name
 ) f ON t.tablespace_name = f.tablespace_name
-WHERE t.contents IN ('PERMANENT', 'UNDO')
-GROUP BY t.tablespace_name, t.contents, t.status
-
-UNION ALL
-
--- Temporary tablespaces
-SELECT 
-    t.tablespace_name,
-    t.contents,
-    t.status,
-    ROUND(SUM(d.bytes) / 1024 / 1024, 2) as size_mb,
-    ROUND(SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / 1024 / 1024, 2) as used_mb,
-    ROUND(SUM(NVL(f.bytes, 0)) / 1024 / 1024, 2) as free_mb,
-    ROUND(100 * SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / NULLIF(SUM(d.bytes), 0), 1) as pct_used,
-    MAX(d.autoextensible) as autoextensible,
-    MAX(d.maxbytes) / 1024 / 1024 as max_size_mb
-FROM dba_tablespaces t
-LEFT JOIN dba_temp_files d ON t.tablespace_name = d.tablespace_name
-LEFT JOIN (
-    SELECT tablespace_name, SUM(bytes_free) as bytes
-    FROM v$temp_space_header
-    GROUP BY tablespace_name
-) f ON t.tablespace_name = f.tablespace_name
-WHERE t.contents = 'TEMPORARY'
-GROUP BY t.tablespace_name, t.contents, t.status
+WHERE t.tablespace_name = :name
+GROUP BY t.tablespace_name
 ```
 
 ---
@@ -314,15 +323,26 @@ WHERE completion_time > SYSDATE - 1/24
 ---
 
 ### 12. Ratio CPU
-**Vue :** `v$sys_time_model`, `v$osstat`
+**Vue :** `v$sys_time_model`, `v$osstat`, `v$instance`, `v$active_session_history`
 
 ```sql
-SELECT 
-    ROUND(100 * tm.db_cpu / NULLIF(os.cpu_count * 1000000, 0), 2) as db_cpu_pct,
-    ROUND(100 * tm.background_cpu / NULLIF(os.cpu_count * 1000000, 0), 2) as bg_cpu_pct,
-    tm.db_time / 1000000 as db_time_per_sec
+-- DB CPU % is the recent utilization from ASH over a 60s window (ON CPU samples
+-- divided by cpu_count * 60s * 10 samples/sec). When ASH has no sample in the
+-- window, it falls back to the average since instance startup. Background CPU %
+-- and DB time/sec are always normalized by uptime.
+SELECT
+    CASE
+        WHEN h.window_samples > 0 THEN
+            ROUND(100 * h.on_cpu / NULLIF(os.cpu_count * 600, 0), 2)
+        ELSE
+            ROUND(100 * (tm.db_cpu / 1000000) / NULLIF(os.cpu_count * i.uptime_sec, 0), 2)
+    END as db_cpu_pct,
+    ROUND(
+        100 * (tm.background_cpu / 1000000) / NULLIF(os.cpu_count * i.uptime_sec, 0), 2
+    ) as bg_cpu_pct,
+    ROUND(tm.db_time / 1000000 / NULLIF(i.uptime_sec, 0), 2) as db_time_per_sec
 FROM (
-    SELECT 
+    SELECT
         SUM(DECODE(stat_name, 'DB CPU', value, 0)) as db_cpu,
         SUM(DECODE(stat_name, 'background cpu time', value, 0)) as background_cpu,
         SUM(DECODE(stat_name, 'DB time', value, 0)) as db_time
@@ -331,7 +351,22 @@ FROM (
 CROSS JOIN (
     SELECT value as cpu_count FROM v$osstat WHERE stat_name = 'NUM_CPUS'
 ) os
+CROSS JOIN (
+    SELECT GREATEST((CAST(SYSTIMESTAMP AS DATE) - startup_time) * 86400, 1) as uptime_sec
+    FROM v$instance
+) i
+CROSS JOIN (
+    SELECT
+        COUNT(*) as window_samples,
+        SUM(CASE WHEN session_state = 'ON CPU' THEN 1 ELSE 0 END) as on_cpu
+    FROM v$active_session_history
+    WHERE sample_time > SYSTIMESTAMP - INTERVAL '60' SECOND
+) h
 ```
+
+> L'ancienne formule divisait le compteur cumulé `DB CPU` par
+> `cpu_count * 1e6` sans normaliser par le temps écoulé, produisant des valeurs
+> absurdes (ex. 5 712 689 %) et de fausses alertes critiques.
 
 ---
 

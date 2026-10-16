@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 from app.database import oracle_pool
 from app.core.oracle_queries import (
-    TABLESPACES, DATAFILES, SEGMENTS, TABLESPACE_GROWTH
+    TABLESPACES, TABLESPACES_LEGACY, DATAFILES, SEGMENTS, TABLESPACE_GROWTH
 )
 from app.config import settings
 import structlog
@@ -11,8 +11,27 @@ logger = structlog.get_logger(__name__)
 
 class StorageService:
     @staticmethod
-    async def get_tablespaces() -> List[Dict[str, Any]]:
+    async def get_tablespaces_raw() -> list[dict[str, Any]]:
+        """Return raw TABLESPACES rows (snake_case), applying the legacy fallback
+        for tablespaces absent from dba_tablespace_usage_metrics."""
         rows = await oracle_pool.execute_query(TABLESPACES)
+        result = []
+        for ts in rows:
+            row = ts
+            if ts.get("legacy_fallback") == 1:
+                legacy = await oracle_pool.execute_query(
+                    TABLESPACES_LEGACY,
+                    {"name": ts.get("tablespace_name")},
+                    fetch_all=False,
+                )
+                if legacy and legacy[0].get("size_mb") is not None:
+                    row = {**ts, **legacy[0]}
+            result.append(row)
+        return result
+
+    @staticmethod
+    async def get_tablespaces() -> List[Dict[str, Any]]:
+        rows = await StorageService.get_tablespaces_raw()
         return [
             {
                 "name": ts.get("tablespace_name"),

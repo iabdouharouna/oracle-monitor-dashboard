@@ -2,7 +2,7 @@ from typing import List, Dict, Any
 import json
 from pathlib import Path
 from app.database import oracle_pool
-from app.core.oracle_queries import ALERT_LOG
+from app.core.oracle_queries import ALERT_LOG, SESSION_COUNTS
 from app.config import settings
 import structlog
 
@@ -56,11 +56,10 @@ class AlertService:
                     "message": f"Tablespace {ts['name']} is {pct:.1f}% full (warning: {t['tablespaceWarn']}%)",
                 })
         
-        # Check session count
-        from app.services.session_service import SessionService
-        sessions = await SessionService.get_sessions()
-        total_sessions = len(sessions)
-        active_sessions = len([s for s in sessions if s.get("status") == "ACTIVE"])
+        # Check session count (lightweight aggregate instead of full session list)
+        rows = await oracle_pool.execute_query(SESSION_COUNTS)
+        total_sessions = int(rows[0].get("total_sessions") or 0) if rows else 0
+        active_sessions = int(rows[0].get("active_sessions") or 0) if rows else 0
         
         limit_row = await oracle_pool.execute_query(
             "SELECT value FROM v$parameter WHERE name = 'sessions'", fetch_all=False
@@ -88,7 +87,7 @@ class AlertService:
         # Check CPU
         from app.services.instance_service import InstanceService
         cpu = await InstanceService.get_cpu_ratio()
-        db_cpu = cpu.get("db_cpu_pct", 0)
+        db_cpu = cpu.get("dbCpuPct", 0)
         
         if db_cpu >= t["cpuCrit"]:
             alerts.append({

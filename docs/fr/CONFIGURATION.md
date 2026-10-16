@@ -59,8 +59,15 @@ services partagent via le volume `app_config`.
 | `ORACLE_POOL_MAX` | `20` | 2-100 | Connexions maximales |
 | `ORACLE_POOL_INCREMENT` | `2` | 1-10 | Incrément de croissance du pool |
 | `ORACLE_TIMEOUT` | `30` | 5-300 | Timeout de connexion (secondes) |
+| `ORACLE_CALL_TIMEOUT_MS` | `60000` | 1000-600000 | Timeout par instruction (millisecondes). Une instruction trop longue renvoie `504 QUERY_TIMEOUT` au lieu de bloquer le worker. |
 | `ORACLE_ENCODING` | `UTF-8` | - | Encodage des caractères |
 | `ORACLE_NCHAR_ENCODING` | `UTF-8` | - | Encodage NCHAR |
+
+Les pools sont créés à la demande et retentés après un échec de connexion avec un délai
+de 30 secondes : une base indisponible au démarrage récupère automatiquement dès
+qu'elle est joignable. Un en-tête `X-Database` pointant vers une base non enrôlée
+renvoie `503 DATABASE_CONNECTION_ERROR` (`Unknown database '<name>'`) au lieu de servir
+silencieusement une autre base.
 
 ### Redis
 

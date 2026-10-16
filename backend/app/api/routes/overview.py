@@ -48,7 +48,7 @@ async def get_overview():
         total_sessions = len(sessions)
         active_sessions = len([s for s in sessions if s.get("status") == "ACTIVE"])
         inactive_sessions = len([s for s in sessions if s.get("status") == "INACTIVE"])
-        blocked_sessions = len([s for s in sessions if s.get("blocking_session") is not None])
+        blocked_sessions = len([s for s in sessions if s.get("blockingSession") is not None])
         
         session_summary = {
             "total": total_sessions,

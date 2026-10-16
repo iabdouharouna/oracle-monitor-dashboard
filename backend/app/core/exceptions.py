@@ -11,6 +11,11 @@ class DatabaseConnectionError(OracleMonitorException):
         super().__init__(message, "DATABASE_CONNECTION_ERROR", 503)
 
 
+class QueryTimeoutError(OracleMonitorException):
+    def __init__(self, message: str = "Oracle query timed out"):
+        super().__init__(message, "QUERY_TIMEOUT", 504)
+
+
 class AuthenticationError(OracleMonitorException):
     def __init__(self, message: str = "Authentication failed"):
         super().__init__(message, "AUTHENTICATION_ERROR", 401)

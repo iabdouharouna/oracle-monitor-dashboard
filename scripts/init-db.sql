@@ -65,6 +65,7 @@ GRANT SELECT ON dba_tablespaces TO monitor;
 GRANT SELECT ON dba_data_files TO monitor;
 GRANT SELECT ON dba_temp_files TO monitor;
 GRANT SELECT ON dba_free_space TO monitor;
+GRANT SELECT ON dba_tablespace_usage_metrics TO monitor;
 GRANT SELECT ON dba_segments TO monitor;
 GRANT SELECT ON dba_objects TO monitor;
 GRANT SELECT ON dba_hist_snapshot TO monitor;

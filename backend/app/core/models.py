@@ -164,9 +164,9 @@ class DatabaseInfo(CamelModel):
 
 
 class ClientSummary(CamelModel):
-    machine: str
-    program: str
-    module: str
+    machine: str | None = None
+    program: str | None = None
+    module: str | None = None
     session_count: int
 
 
