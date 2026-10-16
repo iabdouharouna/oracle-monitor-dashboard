@@ -1,9 +1,10 @@
 from typing import List, Dict, Any
 from app.database import oracle_pool
+from app.services.storage_service import StorageService
 from app.core.oracle_queries import (
     INSTANCE_INFO, INSTANCE_UPTIME, CLIENT_SUMMARY, PROCESS_METRICS,
     MEMORY_METRICS, PGA_METRICS, LIBRARY_CACHE, BUFFER_CACHE_HIT,
-    TABLESPACES, REDO_LOGS, ARCHIVE_LOG_RATE, CPU_RATIO, TOP_SQL,
+    REDO_LOGS, ARCHIVE_LOG_RATE, CPU_RATIO, TOP_SQL,
     SGA_INFO
 )
 from app.config import settings
@@ -112,7 +113,7 @@ class InstanceService:
 
     @staticmethod
     async def get_storage() -> Dict[str, Any]:
-        tablespaces = await oracle_pool.execute_query(TABLESPACES)
+        tablespaces = await StorageService.get_tablespaces_raw()
         redo_logs = await oracle_pool.execute_query(REDO_LOGS)
         archive_rows = await oracle_pool.execute_query(ARCHIVE_LOG_RATE)
         
