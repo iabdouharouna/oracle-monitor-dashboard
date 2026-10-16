@@ -63,10 +63,18 @@ Authorization: Bearer <access_token>
 }
 
 // 503 Service Unavailable
-// Levé par les endpoints de monitoring quand aucune base n'est enrolée/disponible
+// Levé par les endpoints de monitoring quand aucune base n'est enrolée/disponible,
+// ou quand l'en-tête X-Database désigne une base non enrolée
 {
   "detail": "No database configured: enroll a database first",
   "code": "DATABASE_CONNECTION_ERROR"
+}
+
+// 504 Gateway Timeout
+// Levé quand une instruction Oracle dépasse ORACLE_CALL_TIMEOUT_MS
+{
+  "detail": "Oracle query timed out after 60000 ms",
+  "code": "QUERY_TIMEOUT"
 }
 
 // 500 Internal Error

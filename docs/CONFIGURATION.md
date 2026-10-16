@@ -59,8 +59,15 @@ share via the `app_config` volume.
 | `ORACLE_POOL_MAX` | `20` | 2-100 | Maximum connections |
 | `ORACLE_POOL_INCREMENT` | `2` | 1-10 | Pool growth increment |
 | `ORACLE_TIMEOUT` | `30` | 5-300 | Connection timeout (seconds) |
+| `ORACLE_CALL_TIMEOUT_MS` | `60000` | 1000-600000 | Per-statement call timeout (milliseconds). Long queries that exceed it return `504 QUERY_TIMEOUT` instead of hanging the worker. |
 | `ORACLE_ENCODING` | `UTF-8` | - | Character encoding |
 | `ORACLE_NCHAR_ENCODING` | `UTF-8` | - | NCHAR encoding |
+
+Pools are created on demand and are retried after a failed connection with a 30-second
+cooldown, so a database that was down at startup recovers automatically once it is
+reachable again. An `X-Database` header naming a database that is not enrolled returns
+`503 DATABASE_CONNECTION_ERROR` (`Unknown database '<name>'`) instead of silently serving
+another database.
 
 ### Redis
 
