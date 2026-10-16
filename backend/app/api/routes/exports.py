@@ -23,11 +23,11 @@ async def export_sessions_csv():
     ])
     for s in sessions:
         writer.writerow([
-            s.get("sid"), s.get("serial#"), s.get("username"),
+            s.get("sid"), s.get("serial"), s.get("username"),
             s.get("machine"), s.get("program"), s.get("module"),
-            s.get("logon_time"), s.get("status"), s.get("state"),
-            s.get("wait_class"), s.get("event"), s.get("seconds_in_wait"),
-            s.get("blocking_session"), s.get("sql_id"), s.get("pga_allocated_mb")
+            s.get("logonTime"), s.get("status"), s.get("state"),
+            s.get("waitClass"), s.get("event"), s.get("secondsInWait"),
+            s.get("blockingSession"), s.get("sqlId"), s.get("pgaAllocatedMB")
         ])
     
     output.seek(0)
@@ -52,8 +52,8 @@ async def export_tablespaces_csv():
     for ts in tablespaces:
         writer.writerow([
             ts.get("name"), ts.get("type"), ts.get("status"),
-            ts.get("size_mb"), ts.get("used_mb"), ts.get("free_mb"),
-            ts.get("pct_used"), ts.get("autoextensible"), ts.get("max_size_mb")
+            ts.get("sizeMB"), ts.get("usedMB"), ts.get("freeMB"),
+            ts.get("pctUsed"), ts.get("autoextensible"), ts.get("maxSizeMB")
         ])
     
     output.seek(0)
@@ -78,10 +78,10 @@ async def export_sql_monitor_csv():
     ])
     for s in sqls:
         writer.writerow([
-            s.get("sql_id"), s.get("sql_exec_id"), s.get("status"),
-            s.get("duration_sec"), s.get("cpu_time_sec"), s.get("io_time_sec"),
-            s.get("username"), s.get("module"), s.get("px_servers"),
-            s.get("start_time"), s.get("last_refresh_time"), s.get("sql_text")
+            s.get("sqlId"), s.get("sqlExecId"), s.get("status"),
+            s.get("durationSec"), s.get("cpuTimeSec"), s.get("ioTimeSec"),
+            s.get("username"), s.get("module"), s.get("pxServers"),
+            s.get("startTime"), s.get("lastRefreshTime"), s.get("sqlText")
         ])
     
     output.seek(0)
