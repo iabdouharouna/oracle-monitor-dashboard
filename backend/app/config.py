@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     ORACLE_POOL_MAX: int = Field(default=20, ge=2, le=100)
     ORACLE_POOL_INCREMENT: int = Field(default=2, ge=1, le=10)
     ORACLE_TIMEOUT: int = Field(default=30, ge=5, le=300)
+    ORACLE_CALL_TIMEOUT_MS: int = Field(default=60_000, ge=1_000, le=600_000)
     ORACLE_ENCODING: str = "UTF-8"
     ORACLE_NCHAR_ENCODING: str = "UTF-8"
 
