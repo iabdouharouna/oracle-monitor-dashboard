@@ -252,8 +252,10 @@ are `"sid,serial"` strings), then clears the selection.
 
 #### Permanent/Undo Tablespaces
 **API:** `GET /storage/tablespaces`  
-**Data:** Name, Type, Status, Size/Used/Free MB, % Used, Autoextend, Max Size  
-**Actions:** Click row → Detail panel
+**Data:** Name, Type, Status, Usage bar (% Used vs % Max), Used/Size/Max MB, Autoextend  
+**Sorting:** by allocated usage (% Used), descending  
+**Pagination:** 10 rows per page (10/25/50/100)  
+**Actions:** Click row → Detail panel (rendered below the tables, for any tab)
 
 #### Temporary Tablespaces
 **API:** Same endpoint, filtered by type  
@@ -269,18 +271,32 @@ are `"sid,serial"` strings), then clears the selection.
 **API:** `GET /storage/tablespaces/{name}`  
 **Components:**
 
-1. **Gauge Chart** - Usage % with thresholds
-2. **Key Metrics** - Size, Used, Free MB
+1. **Gauge Chart** - Allocated usage % (arc), colored by autoextend-aware `% Max`
+2. **Key Metrics** - Size, Used, Max MB
 3. **Growth Trend Chart** - Line chart with:
    - Used space (line)
    - Allocated space (area)
-   - Warning/Critical/Max threshold lines
+   - Warning/Critical/Max threshold lines (vs max capacity)
 4. **Datafiles Table** - File#, Name, Size, Max, Autoextend, Increment, Status, Online
 5. **Top Segments** - Owner, Name, Type, Size, Extents (top 20)
 
+### Usage semantics (autoextend-aware)
+
+Two ratios are computed per tablespace:
+
+- **% Used** (`pctUsed`) = used / allocated — how full the *current allocation* is.
+- **% Max** (`pctUsedMax`) = used / max capacity — how full the tablespace can ever
+  get, taking autoextend into account (max capacity = sum of each datafile's
+  `MAXBYTES` when autoextensible, current size otherwise).
+
+For non-autoextensible tablespaces both are equal. KPI cards, alerts and the
+overview `critical_tablespaces` count use **% Max**, so autoextensible tablespaces
+with growth headroom are not flagged.
+
 ### Visualizations
 
-- **Tablespace Gauges Grid** - Responsive grid of radial gauges
+- **Tablespace Gauges Grid** - Sorted by allocated usage; arc = allocated %, color
+  = autoextend-aware % Max; top 12 with a "Show all" toggle
 - **Capacity Planning Table** - Growth rate, days to thresholds
 - **Storage Trend Chart** - Historical growth with thresholds
 - **DataFiles/segments tables** with sorting

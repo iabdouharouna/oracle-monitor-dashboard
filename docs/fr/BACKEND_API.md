@@ -537,11 +537,17 @@ Tous les tablespaces avec leur utilisation.
     "used_mb": 8192,
     "free_mb": 2048,
     "pct_used": 80.0,
+    "pct_used_max": 40.0,
     "autoextensible": true,
     "max_size_mb": 20480
   }
 ]
 ```
+
+`pct_used` = utilisé / taille allouée (remplissage de l'allocation courante).
+`pct_used_max` = utilisé / `max_size_mb` (capacité autoextend-aware ; égale
+`pct_used` quand le tablespace n'est pas autoextensible). Les alertes et le KPI
+`critical_tablespaces` de l'overview se basent sur `pct_used_max`.
 
 #### GET `/storage/tablespaces/{name}`
 Tablespace détaillé avec datafiles, segments, tendance de croissance.
@@ -637,6 +643,10 @@ nouvellement enregistrées). La réponse est consommée par la page Alertes, qui
 #### GET `/alerts/check`
 Vérifier les seuils courants par rapport aux métriques en temps réel.
 
+Les alertes tablespace sont évaluées sur le ratio autoextend-aware (`pctUsedMax`) :
+un tablespace autoextensible disposant de marge de croissance n'est donc pas
+signalé. La métrique d'alerte s'appelle `tablespace.<name>.pct_used_max`.
+
 ---
 
 ### Exports
@@ -645,7 +655,8 @@ Vérifier les seuils courants par rapport aux métriques en temps réel.
 Exporter les sessions en CSV.
 
 #### GET `/exports/tablespaces/csv`
-Exporter les tablespaces en CSV.
+Exporter les tablespaces en CSV. Colonnes : `Tablespace, Type, Status, Size MB,
+Used MB, Free MB, Pct Used, Pct Used Max, Autoextensible, Max Size MB`.
 
 #### GET `/exports/sql-monitor/csv`
 Exporter le SQL monitor en CSV.

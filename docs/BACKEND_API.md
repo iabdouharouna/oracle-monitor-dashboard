@@ -537,11 +537,17 @@ All tablespaces with usage.
     "used_mb": 8192,
     "free_mb": 2048,
     "pct_used": 80.0,
+    "pct_used_max": 40.0,
     "autoextensible": true,
     "max_size_mb": 20480
   }
 ]
 ```
+
+`pct_used` = used / allocated size (how full the current allocation is).
+`pct_used_max` = used / `max_size_mb` (autoextend-aware capacity; equals
+`pct_used` when the tablespace is not autoextensible). Alerts and the overview
+`critical_tablespaces` KPI are based on `pct_used_max`.
 
 #### GET `/storage/tablespaces/{name}`
 Detailed tablespace with datafiles, segments, growth trend.
@@ -637,6 +643,10 @@ values). The response is consumed by the Alerts page, which also shows a success
 #### GET `/alerts/check`
 Check current thresholds against live metrics.
 
+Tablespace alerts are evaluated against the autoextend-aware ratio
+(`pctUsedMax`), so an autoextensible tablespace with growth headroom is not
+flagged. The alert metric is named `tablespace.<name>.pct_used_max`.
+
 ---
 
 ### Exports
@@ -645,7 +655,8 @@ Check current thresholds against live metrics.
 Export sessions to CSV.
 
 #### GET `/exports/tablespaces/csv`
-Export tablespaces to CSV.
+Export tablespaces to CSV. Columns: `Tablespace, Type, Status, Size MB, Used MB,
+Free MB, Pct Used, Pct Used Max, Autoextensible, Max Size MB`.
 
 #### GET `/exports/sql-monitor/csv`
 Export SQL monitor to CSV.

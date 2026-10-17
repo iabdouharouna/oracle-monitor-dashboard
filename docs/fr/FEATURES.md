@@ -252,8 +252,10 @@ sélection sont des chaînes `"sid,serial"`), puis efface la sélection.
 
 #### Tablespaces permanents/undo
 **API :** `GET /storage/tablespaces`
-**Données :** Nom, Type, État, Taille/Utilisé/Libre Mo, % Utilisé, Autoextend, Taille max
-**Actions :** Cliquer sur une ligne → Panneau de détails
+**Données :** Nom, Type, État, Barre d'usage (% Utilisé vs % Max), Utilisé/Taille/Max Mo, Autoextend
+**Tri :** par usage alloué (% Utilisé), décroissant
+**Pagination :** 10 lignes par page (10/25/50/100)
+**Actions :** Cliquer sur une ligne → Panneau de détails (affiché sous les tableaux, quel que soit l'onglet)
 
 #### Tablespaces temporaires
 **API :** Même endpoint, filtré par type
@@ -269,18 +271,32 @@ sélection sont des chaînes `"sid,serial"`), puis efface la sélection.
 **API :** `GET /storage/tablespaces/{name}`
 **Composants :**
 
-1. **Graphique jauge** - % d'utilisation avec seuils
-2. **Métriques clés** - Taille, Utilisé, Libre Mo
+1. **Graphique jauge** - % d'utilisation allouée (arc), coloré selon le `% Max` autoextend-aware
+2. **Métriques clés** - Taille, Utilisé, Max Mo
 3. **Graphique de tendance de croissance** - Graphique en ligne avec :
    - Espace utilisé (ligne)
    - Espace alloué (aire)
-   - Lignes de seuil Avertissement/Critique/Max
+   - Lignes de seuil Avertissement/Critique/Max (par rapport à la capacité max)
 4. **Tableau des datafiles** - File#, Nom, Taille, Max, Autoextend, Incrément, État, En ligne
 5. **Top segments** - Propriétaire, Nom, Type, Taille, Extents (top 20)
 
+### Sémantique d'usage (autoextend-aware)
+
+Deux ratios sont calculés par tablespace :
+
+- **% Utilisé** (`pctUsed`) = utilisé / alloué — remplissage de l'*allocation courante*.
+- **% Max** (`pctUsedMax`) = utilisé / capacité max — remplissage maximal possible,
+  autoextend pris en compte (capacité max = somme des `MAXBYTES` de chaque datafile
+  si autoextensible, taille courante sinon).
+
+Pour un tablespace non autoextensible les deux sont égaux. Les cartes KPI, les
+alertes et le compteur `critical_tablespaces` de l'overview utilisent le **% Max** :
+un tablespace autoextensible disposant de marge n'est donc pas signalé.
+
 ### Visualisations
 
-- **Grille de jauges de tablespace** - Grille responsive de jauges radiales
+- **Grille de jauges de tablespace** - Triée par usage alloué ; arc = % alloué,
+  couleur = % Max autoextend-aware ; top 12 avec un bouton « Show all »
 - **Tableau de planification de capacité** - Taux de croissance, jours avant les seuils
 - **Graphique de tendance du stockage** - Croissance historique avec seuils
 - **Tableaux DataFiles/segments** avec tri
