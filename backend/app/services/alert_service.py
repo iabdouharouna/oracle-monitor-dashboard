@@ -38,22 +38,33 @@ class AlertService:
         from app.services.storage_service import StorageService
         tablespaces = await StorageService.get_tablespaces()
         for ts in tablespaces:
-            pct = ts.get("pct_used", 0)
+            # Risk is measured against the max capacity (autoextend ceiling) so
+            # autoextensible tablespaces are not flagged while they still have
+            # growth headroom. pctUsedMax == pctUsed when not autoextensible.
+            pct = ts.get("pctUsedMax", 0)
             if pct >= t["tablespaceCrit"]:
                 alerts.append({
-                    "metric": f"tablespace.{ts['name']}.pct_used",
+                    "metric": f"tablespace.{ts['name']}.pct_used_max",
                     "value": pct,
                     "threshold": t["tablespaceCrit"],
                     "severity": "CRITICAL",
-                    "message": f"Tablespace {ts['name']} is {pct:.1f}% full (critical: {t['tablespaceCrit']}%)",
+                    "message": (
+                        f"Tablespace {ts['name']} is {pct:.1f}% of its max capacity "
+                        f"({ts.get('pctUsed', 0):.1f}% of {ts.get('sizeMB', 0):.0f} MB allocated) "
+                        f"(critical: {t['tablespaceCrit']}%)"
+                    ),
                 })
             elif pct >= t["tablespaceWarn"]:
                 alerts.append({
-                    "metric": f"tablespace.{ts['name']}.pct_used",
+                    "metric": f"tablespace.{ts['name']}.pct_used_max",
                     "value": pct,
                     "threshold": t["tablespaceWarn"],
                     "severity": "WARNING",
-                    "message": f"Tablespace {ts['name']} is {pct:.1f}% full (warning: {t['tablespaceWarn']}%)",
+                    "message": (
+                        f"Tablespace {ts['name']} is {pct:.1f}% of its max capacity "
+                        f"({ts.get('pctUsed', 0):.1f}% of {ts.get('sizeMB', 0):.0f} MB allocated) "
+                        f"(warning: {t['tablespaceWarn']}%)"
+                    ),
                 })
         
         # Check session count (lightweight aggregate instead of full session list)

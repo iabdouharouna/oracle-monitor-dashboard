@@ -32,20 +32,33 @@ class StorageService:
     @staticmethod
     async def get_tablespaces() -> List[Dict[str, Any]]:
         rows = await StorageService.get_tablespaces_raw()
-        return [
-            {
-                "name": ts.get("tablespace_name"),
-                "type": ts.get("contents"),
-                "status": ts.get("status"),
-                "sizeMB": ts.get("size_mb", 0),
-                "usedMB": ts.get("used_mb", 0),
-                "freeMB": ts.get("free_mb", 0),
-                "pctUsed": ts.get("pct_used", 0),
-                "autoextensible": ts.get("autoextensible") == "YES",
-                "maxSizeMB": ts.get("max_size_mb") if ts.get("max_size_mb", 0) > 0 else None,
-            }
-            for ts in rows
-        ]
+        result = []
+        for ts in rows:
+            size_mb = float(ts.get("size_mb") or 0)
+            used_mb = float(ts.get("used_mb") or 0)
+            max_mb = float(ts.get("max_size_mb") or 0)
+            autoextensible = ts.get("autoextensible") == "YES"
+            # Capacity = autoextend ceiling (sum of per-file MAXBYTES for
+            # autoextensible datafiles, current size otherwise). Never below the
+            # allocated size.
+            capacity_mb = max(max_mb, size_mb)
+            pct_used = round(100 * used_mb / size_mb, 1) if size_mb > 0 else 0.0
+            pct_used_max = round(100 * used_mb / capacity_mb, 2) if capacity_mb > 0 else 0.0
+            result.append(
+                {
+                    "name": ts.get("tablespace_name"),
+                    "type": ts.get("contents"),
+                    "status": ts.get("status"),
+                    "sizeMB": round(size_mb, 2),
+                    "usedMB": round(used_mb, 2),
+                    "freeMB": round(max(size_mb - used_mb, 0), 2),
+                    "maxSizeMB": round(capacity_mb, 2),
+                    "pctUsed": pct_used,
+                    "pctUsedMax": pct_used_max,
+                    "autoextensible": autoextensible,
+                }
+            )
+        return result
 
     @staticmethod
     async def get_tablespace_detail(name: str) -> Optional[Dict[str, Any]]:

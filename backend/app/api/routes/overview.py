@@ -32,7 +32,7 @@ async def get_overview():
         total_gb = sum(ts["sizeMB"] for ts in tablespaces) / 1024
         used_gb = sum(ts["usedMB"] for ts in tablespaces) / 1024
         free_gb = sum(ts["freeMB"] for ts in tablespaces) / 1024
-        critical_ts = len([ts for ts in tablespaces if ts["pctUsed"] >= 90])
+        critical_ts = len([ts for ts in tablespaces if ts["pctUsedMax"] >= 90])
         
         storage_summary = {
             "total_gb": round(total_gb, 2),

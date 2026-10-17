@@ -214,6 +214,7 @@ class TablespaceInfo(CamelModel):
     used_mb: float = Field(serialization_alias='usedMB')
     free_mb: float = Field(serialization_alias='freeMB')
     pct_used: float = Field(serialization_alias='pctUsed')
+    pct_used_max: float = Field(default=0.0, serialization_alias='pctUsedMax')
     autoextensible: bool
     max_size_mb: Optional[float] = Field(default=None, serialization_alias='maxSizeMB')
 

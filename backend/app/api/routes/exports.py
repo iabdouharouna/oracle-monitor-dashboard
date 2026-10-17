@@ -47,13 +47,14 @@ async def export_tablespaces_csv():
     writer = csv.writer(output)
     writer.writerow([
         "Tablespace", "Type", "Status", "Size MB", "Used MB", 
-        "Free MB", "Pct Used", "Autoextensible", "Max Size MB"
+        "Free MB", "Pct Used", "Pct Used Max", "Autoextensible", "Max Size MB"
     ])
     for ts in tablespaces:
         writer.writerow([
             ts.get("name"), ts.get("type"), ts.get("status"),
             ts.get("sizeMB"), ts.get("usedMB"), ts.get("freeMB"),
-            ts.get("pctUsed"), ts.get("autoextensible"), ts.get("maxSizeMB")
+            ts.get("pctUsed"), ts.get("pctUsedMax"),
+            ts.get("autoextensible"), ts.get("maxSizeMB")
         ])
     
     output.seek(0)
