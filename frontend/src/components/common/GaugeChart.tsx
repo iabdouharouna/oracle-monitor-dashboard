@@ -10,6 +10,11 @@ interface GaugeChartProps {
   showLegend?: boolean;
   onClick?: () => void;
   sx?: React.CSSProperties;
+  /** Value used for threshold coloring (defaults to `value`). Useful when the
+   * displayed arc and the risk metric differ (e.g. autoextend-aware usage). */
+  colorValue?: number;
+  /** Small secondary caption rendered under the label. */
+  subLabel?: string;
 }
 
 const COLORS = {
@@ -27,6 +32,8 @@ export const GaugeChart: React.FC<GaugeChartProps> = ({
   showLegend = false,
   onClick,
   sx,
+  colorValue,
+  subLabel,
 }) => {
   const getColor = (v: number) => {
     if (v >= thresholds.crit) return COLORS.critical;
@@ -34,8 +41,9 @@ export const GaugeChart: React.FC<GaugeChartProps> = ({
     return COLORS.normal;
   };
 
-  const color = getColor(value);
+  const color = getColor(colorValue ?? value);
   const normalizedValue = Math.min(100, Math.max(0, value));
+  const valueLabel = value > 0 && value < 0.1 ? '<0.1' : value.toFixed(1);
 
   const pieData = [
     { name: 'Used', value: normalizedValue / 2 },
@@ -90,11 +98,16 @@ export const GaugeChart: React.FC<GaugeChartProps> = ({
         }}
       >
         <div style={{ fontSize: size * 0.18, fontWeight: 600, color: color }}>
-          {value.toFixed(1)}{unit}
+          {valueLabel}{unit}
         </div>
         <div style={{ fontSize: size * 0.09, color: '#605E5C', marginTop: 2 }}>
           {label}
         </div>
+        {subLabel && (
+          <div style={{ fontSize: size * 0.085, color: '#605E5C', marginTop: 1 }}>
+            {subLabel}
+          </div>
+        )}
       </div>
 
       {showLegend && (

@@ -1,9 +1,54 @@
-import React, { useState } from 'react';
-import { Box, Typography, Paper, Grid, Tab, Button, Divider, Chip } from '@mui/material';
+import React, { useMemo, useState } from 'react';
+import { Box, Typography, Paper, Grid, Tab, Button, Divider, LinearProgress } from '@mui/material';
 import { TabContext, TabList, TabPanel } from '@mui/lab';
+import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { useTablespaces, useTablespaceDetail, useCapacityPlanning } from '../api/hooks/useStorage';
-import { TablespaceGauges, DataTable, StorageTrendChart, LoadingSkeleton, KPICard, GaugeChart } from '../components/common';
+import { TablespaceGauges, DataTable, StorageTrendChart, LoadingSkeleton, KPICard, GaugeChart, statusChip } from '../components/common';
 import { Storage as StorageIcon, TrendingUp, Warning, Error as ErrorIcon } from '@mui/icons-material';
+import type { TablespaceInfo } from '../types/api';
+
+const fmtPct = (v: number) => (v > 0 && v < 0.1 ? '<0.1' : v.toFixed(1));
+
+const riskColor = (pctMax: number): 'error' | 'warning' | 'success' => {
+  if (pctMax >= 90) return 'error';
+  if (pctMax >= 80) return 'warning';
+  return 'success';
+};
+
+const usageCell = (p: GridRenderCellParams) => {
+  const pct = p.row.pctUsed as number;
+  const pctMax = p.row.pctUsedMax as number;
+  return (
+    <Box sx={{ width: '100%', py: 0.5 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, mb: 0.25 }}>
+        <span>{fmtPct(pct)}%</span>
+        <span style={{ color: '#605E5C' }}>max {fmtPct(pctMax)}%</span>
+      </Box>
+      <LinearProgress
+        variant="determinate"
+        value={Math.min(Math.max(pct, 0), 100)}
+        color={riskColor(pctMax)}
+        sx={{ height: 6, borderRadius: 3 }}
+      />
+    </Box>
+  );
+};
+
+const BASE_COLUMNS: GridColDef[] = [
+  { field: 'name', headerName: 'Tablespace', flex: 1, minWidth: 180 },
+  { field: 'type', headerName: 'Type', width: 110 },
+  { field: 'status', headerName: 'Status', width: 110, renderCell: (p) => statusChip(p.value) },
+  { field: 'used', headerName: 'Usage vs Max', width: 180, sortable: false, renderCell: usageCell },
+  { field: 'usedMB', headerName: 'Used (MB)', type: 'number', width: 110 },
+  { field: 'sizeMB', headerName: 'Size (MB)', type: 'number', width: 110 },
+  { field: 'maxSizeMB', headerName: 'Max (MB)', type: 'number', width: 120 },
+  {
+    field: 'autoextensible',
+    headerName: 'Auto',
+    width: 80,
+    renderCell: (p) => (p.value ? 'Yes' : 'No'),
+  },
+];
 
 export const Storage: React.FC = () => {
   const [tab, setTab] = useState('0');
@@ -13,6 +58,15 @@ export const Storage: React.FC = () => {
   const { data: detail } = useTablespaceDetail(selectedTablespace);
   const { data: capacity } = useCapacityPlanning();
 
+  const permTablespaces = useMemo(
+    () => (tablespaces || []).filter((t) => t.type !== 'TEMPORARY').sort((a, b) => b.pctUsed - a.pctUsed),
+    [tablespaces]
+  );
+  const tempTablespaces = useMemo(
+    () => (tablespaces || []).filter((t) => t.type === 'TEMPORARY').sort((a, b) => b.pctUsed - a.pctUsed),
+    [tablespaces]
+  );
+
   if (isLoading && !tablespaces) {
     return <LoadingSkeleton variant="card" />;
   }
@@ -21,8 +75,11 @@ export const Storage: React.FC = () => {
     return <Box sx={{ p: 2, color: 'error.main' }}>Error: {error.message}</Box>;
   }
 
-  const permTablespaces = tablespaces?.filter(t => t.type !== 'TEMPORARY') || [];
-  const tempTablespaces = tablespaces?.filter(t => t.type === 'TEMPORARY') || [];
+  const critCount = (tablespaces || []).filter((t) => t.pctUsedMax >= 90).length;
+  const warnCount = (tablespaces || []).filter((t) => t.pctUsedMax >= 80 && t.pctUsedMax < 90).length;
+  const okCount = (tablespaces || []).filter((t) => t.pctUsedMax < 80).length;
+
+  const withIds = (rows: TablespaceInfo[]) => rows.map((t, i) => ({ id: i, ...t }));
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -42,22 +99,27 @@ export const Storage: React.FC = () => {
           <KPICard title="Total Tablespaces" value={tablespaces?.length || 0} icon={<StorageIcon />} />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <KPICard title="Critical" value={tablespaces?.filter(t => t.pctUsed >= 90).length || 0} icon={<ErrorIcon />} color="error" />
+          <KPICard title="Critical" value={critCount} icon={<ErrorIcon />} color="error" />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <KPICard title="Warning" value={tablespaces?.filter(t => t.pctUsed >= 80 && t.pctUsed < 90).length || 0} icon={<Warning />} color="warning" />
+          <KPICard title="Warning" value={warnCount} icon={<Warning />} color="warning" />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <KPICard title="OK" value={tablespaces?.filter(t => t.pctUsed < 80).length || 0} icon={<TrendingUp />} color="success" />
+          <KPICard title="OK" value={okCount} icon={<TrendingUp />} color="success" />
         </Grid>
       </Grid>
 
       {/* Tablespace Gauges */}
       <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6" sx={{ mb: 2 }}>Tablespace Usage</Typography>
-        <TablespaceGauges 
-          tablespaces={permTablespaces} 
-          onClick={(ts) => setSelectedTablespace(ts.name)} 
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Typography variant="h6">Tablespace Usage</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Sorted by allocated usage · color reflects usage vs max capacity (autoextend-aware)
+          </Typography>
+        </Box>
+        <TablespaceGauges
+          tablespaces={permTablespaces}
+          onClick={(ts) => setSelectedTablespace(ts.name)}
         />
       </Paper>
 
@@ -71,35 +133,19 @@ export const Storage: React.FC = () => {
 
         <TabPanel value="0" sx={{ p: 0 }}>
           <DataTable
-            rows={permTablespaces.map((t, i) => ({ id: i, ...t }))}
-            columns={[
-              { field: 'name', headerName: 'Tablespace', flex: 1, minWidth: 150 },
-              { field: 'type', headerName: 'Type', width: 120 },
-              { field: 'status', headerName: 'Status', width: 100, renderCell: (p) => <Chip label={p.value} size="small" /> },
-              { field: 'sizeMB', headerName: 'Size (MB)', type: 'number', width: 120 },
-              { field: 'usedMB', headerName: 'Used (MB)', type: 'number', width: 120 },
-              { field: 'freeMB', headerName: 'Free (MB)', type: 'number', width: 120 },
-              { field: 'pctUsed', headerName: 'Used %', type: 'number', width: 100, renderCell: (p) => `${p.value.toFixed(1)}%` },
-              { field: 'autoextensible', headerName: 'Auto', width: 60, renderCell: (p) => p.value ? 'Yes' : 'No' },
-              { field: 'maxSizeMB', headerName: 'Max (MB)', type: 'number', width: 120 },
-            ]}
-            onRowClick={(row) => setSelectedTablespace(row.name)}
+            rows={withIds(permTablespaces)}
+            columns={BASE_COLUMNS}
+            pageSize={10}
+            onRowClick={(row) => setSelectedTablespace((row as TablespaceInfo).name)}
           />
         </TabPanel>
 
         <TabPanel value="1" sx={{ p: 0 }}>
           <DataTable
-            rows={tempTablespaces.map((t, i) => ({ id: i, ...t }))}
-            columns={[
-              { field: 'name', headerName: 'Tablespace', flex: 1, minWidth: 150 },
-              { field: 'type', headerName: 'Type', width: 120 },
-              { field: 'status', headerName: 'Status', width: 100 },
-              { field: 'sizeMB', headerName: 'Size (MB)', type: 'number', width: 120 },
-              { field: 'usedMB', headerName: 'Used (MB)', type: 'number', width: 120 },
-              { field: 'freeMB', headerName: 'Free (MB)', type: 'number', width: 120 },
-              { field: 'pctUsed', headerName: 'Used %', type: 'number', width: 100, renderCell: (p) => `${p.value.toFixed(1)}%` },
-              { field: 'autoextensible', headerName: 'Auto', width: 60, renderCell: (p) => p.value ? 'Yes' : 'No' },
-            ]}
+            rows={withIds(tempTablespaces)}
+            columns={BASE_COLUMNS}
+            pageSize={10}
+            onRowClick={(row) => setSelectedTablespace((row as TablespaceInfo).name)}
           />
         </TabPanel>
 
@@ -125,86 +171,91 @@ export const Storage: React.FC = () => {
                 />
               )}
             </Grid>
-            
-            {/* Detail Panel */}
-            {selectedTablespace && detail && (
-              <Grid item xs={12}>
-                <Paper sx={{ p: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6">Tablespace Detail: {detail.name}</Typography>
-                    <Button onClick={() => setSelectedTablespace(null)}>Close</Button>
-                  </Box>
-                  
-                  <Grid container spacing={3} sx={{ mb: 3 }}>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <GaugeChart value={detail.pctUsed} label="Usage" size={150} thresholds={{ warn: 80, crit: 90 }} />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <KPICard title="Size" value={detail.sizeMB.toFixed(1)} unit="MB" icon={<StorageIcon />} />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <KPICard title="Used" value={detail.usedMB.toFixed(1)} unit="MB" icon={<StorageIcon />} />
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                      <KPICard title="Free" value={detail.freeMB.toFixed(1)} unit="MB" icon={<StorageIcon />} />
-                    </Grid>
-                  </Grid>
-
-                  {/* Growth Trend */}
-                  {detail.growthTrend?.length && (
-                    <StorageTrendChart 
-                      data={detail.growthTrend} 
-                      tablespaceName={detail.name}
-                      warnThreshold={detail.sizeMB * 0.8}
-                      critThreshold={detail.sizeMB * 0.9}
-                      maxSize={detail.maxSizeMB || undefined}
-                      height={350}
-                    />
-                  )}
-
-                  {/* Datafiles */}
-                  {detail.datafiles?.length && (
-                    <>
-                    <Divider sx={{ my: 3 }} />
-                    <Typography variant="h6" sx={{ mb: 2 }}>Datafiles</Typography>
-                    <DataTable
-                      rows={detail.datafiles.map((d, i) => ({ id: i, ...d }))}
-                      columns={[
-                        { field: 'fileId', headerName: 'File#', type: 'number', width: 80 },
-                        { field: 'fileName', headerName: 'File Name', flex: 1, minWidth: 300 },
-                        { field: 'sizeMB', headerName: 'Size (MB)', type: 'number', width: 120 },
-                        { field: 'maxSizeMB', headerName: 'Max (MB)', type: 'number', width: 120 },
-                        { field: 'autoextensible', headerName: 'Auto', width: 60, renderCell: (p) => p.value ? 'Yes' : 'No' },
-                        { field: 'incrementMB', headerName: 'Inc (MB)', type: 'number', width: 100 },
-                        { field: 'status', headerName: 'Status', width: 100 },
-                        { field: 'onlineStatus', headerName: 'Online', width: 100 },
-                      ]}
-                    />
-                    </>
-                  )}
-
-                  {/* Top Segments */}
-                  {detail.segments?.length && (
-                    <>
-                    <Divider sx={{ my: 3 }} />
-                    <Typography variant="h6" sx={{ mb: 2 }}>Top Segments</Typography>
-                    <DataTable
-                      rows={detail.segments.map((s, i) => ({ id: i, ...s }))}
-                      columns={[
-                        { field: 'owner', headerName: 'Owner', width: 120 },
-                        { field: 'segmentName', headerName: 'Segment', flex: 1 },
-                        { field: 'segmentType', headerName: 'Type', width: 120 },
-                        { field: 'sizeMB', headerName: 'Size (MB)', type: 'number', width: 120 },
-                        { field: 'extents', headerName: 'Extents', type: 'number', width: 100 },
-                      ]}
-                    />
-                    </>
-                  )}
-                </Paper>
-              </Grid>
-            )}
           </Grid>
         </TabPanel>
+
+        {/* Detail Panel — shown for any tab so row clicks always reveal it */}
+        {selectedTablespace && detail && (
+          <Paper sx={{ p: 2, mt: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">Tablespace Detail: {detail.name}</Typography>
+              <Button onClick={() => setSelectedTablespace(null)}>Close</Button>
+            </Box>
+
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <GaugeChart
+                  value={detail.pctUsed}
+                  colorValue={detail.pctUsedMax}
+                  label="Usage"
+                  subLabel={`vs max ${fmtPct(detail.pctUsedMax)}%`}
+                  size={150}
+                  thresholds={{ warn: 80, crit: 90 }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <KPICard title="Size" value={detail.sizeMB.toFixed(1)} unit="MB" icon={<StorageIcon />} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <KPICard title="Used" value={detail.usedMB.toFixed(1)} unit="MB" icon={<StorageIcon />} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <KPICard title="Max" value={detail.maxSizeMB.toFixed(1)} unit="MB" icon={<StorageIcon />} />
+              </Grid>
+            </Grid>
+
+            {/* Growth Trend */}
+            {!!detail.growthTrend?.length && (
+              <StorageTrendChart
+                data={detail.growthTrend}
+                tablespaceName={detail.name}
+                warnThreshold={detail.maxSizeMB * 0.8}
+                critThreshold={detail.maxSizeMB * 0.9}
+                maxSize={detail.maxSizeMB || undefined}
+                height={350}
+              />
+            )}
+
+            {/* Datafiles */}
+            {!!detail.datafiles?.length && (
+              <>
+              <Divider sx={{ my: 3 }} />
+              <Typography variant="h6" sx={{ mb: 2 }}>Datafiles</Typography>
+              <DataTable
+                rows={detail.datafiles.map((d, i) => ({ id: i, ...d }))}
+                columns={[
+                  { field: 'fileId', headerName: 'File#', type: 'number', width: 80 },
+                  { field: 'fileName', headerName: 'File Name', flex: 1, minWidth: 300 },
+                  { field: 'sizeMB', headerName: 'Size (MB)', type: 'number', width: 120 },
+                  { field: 'maxSizeMB', headerName: 'Max (MB)', type: 'number', width: 120 },
+                  { field: 'autoextensible', headerName: 'Auto', width: 60, renderCell: (p) => p.value ? 'Yes' : 'No' },
+                  { field: 'incrementMB', headerName: 'Inc (MB)', type: 'number', width: 100 },
+                  { field: 'status', headerName: 'Status', width: 100 },
+                  { field: 'onlineStatus', headerName: 'Online', width: 100 },
+                ]}
+              />
+              </>
+            )}
+
+            {/* Top Segments */}
+            {!!detail.segments?.length && (
+              <>
+              <Divider sx={{ my: 3 }} />
+              <Typography variant="h6" sx={{ mb: 2 }}>Top Segments</Typography>
+              <DataTable
+                rows={detail.segments.map((s, i) => ({ id: i, ...s }))}
+                columns={[
+                  { field: 'owner', headerName: 'Owner', width: 120 },
+                  { field: 'segmentName', headerName: 'Segment', flex: 1 },
+                  { field: 'segmentType', headerName: 'Type', width: 120 },
+                  { field: 'sizeMB', headerName: 'Size (MB)', type: 'number', width: 120 },
+                  { field: 'extents', headerName: 'Extents', type: 'number', width: 100 },
+                ]}
+              />
+              </>
+            )}
+          </Paper>
+        )}
       </TabContext>
     </Box>
   );
