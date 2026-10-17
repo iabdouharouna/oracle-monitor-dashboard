@@ -38,7 +38,14 @@ const BASE_COLUMNS: GridColDef[] = [
   { field: 'name', headerName: 'Tablespace', flex: 1, minWidth: 180 },
   { field: 'type', headerName: 'Type', width: 110 },
   { field: 'status', headerName: 'Status', width: 110, renderCell: (p) => statusChip(p.value) },
-  { field: 'used', headerName: 'Usage vs Max', width: 180, sortable: false, renderCell: usageCell },
+  {
+    field: 'used',
+    headerName: 'Usage vs Max',
+    width: 180,
+    valueGetter: (_value, row) => row.pctUsedMax,
+    sortingOrder: ['desc', 'asc'],
+    renderCell: usageCell,
+  },
   { field: 'usedMB', headerName: 'Used (MB)', type: 'number', width: 110 },
   { field: 'sizeMB', headerName: 'Size (MB)', type: 'number', width: 110 },
   { field: 'maxSizeMB', headerName: 'Max (MB)', type: 'number', width: 120 },
@@ -59,11 +66,11 @@ export const Storage: React.FC = () => {
   const { data: capacity } = useCapacityPlanning();
 
   const permTablespaces = useMemo(
-    () => (tablespaces || []).filter((t) => t.type !== 'TEMPORARY').sort((a, b) => b.pctUsed - a.pctUsed),
+    () => (tablespaces || []).filter((t) => t.type !== 'TEMPORARY').sort((a, b) => b.pctUsedMax - a.pctUsedMax),
     [tablespaces]
   );
   const tempTablespaces = useMemo(
-    () => (tablespaces || []).filter((t) => t.type === 'TEMPORARY').sort((a, b) => b.pctUsed - a.pctUsed),
+    () => (tablespaces || []).filter((t) => t.type === 'TEMPORARY').sort((a, b) => b.pctUsedMax - a.pctUsedMax),
     [tablespaces]
   );
 
