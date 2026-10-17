@@ -73,6 +73,8 @@ interface GaugeChartProps {
   showLegend?: boolean;
   onClick?: () => void;
   sx?: React.CSSProperties;         // Extra styles (clickable gauge cursor)
+  colorValue?: number;              // Value used for coloring (defaults to `value`)
+  subLabel?: string;                // Small caption under the label
 }
 ```
 
@@ -92,6 +94,10 @@ interface GaugeChartProps {
 - Green (`#00A651`): value < warn threshold
 - Orange (`#FF8C00`): warn ≤ value < crit
 - Red (`#D13438`): value ≥ crit threshold
+
+Coloring uses `colorValue` when provided (defaults to `value`), allowing the arc
+and the risk metric to differ — e.g. the tablespace gauges fill the arc with the
+allocated usage but color it by the autoextend-aware `pctUsedMax`.
 
 **Features:**
 - Semi-circle gauge with gradient fill
@@ -445,6 +451,7 @@ Grid of radial gauges for tablespace usage.
 interface TablespaceGaugesProps {
   tablespaces: TablespaceInfo[];
   onClick?: (ts: TablespaceInfo) => void;
+  initialCount?: number;   // Gauges shown before "Show all" (default 12)
 }
 ```
 
@@ -453,6 +460,10 @@ interface TablespaceGaugesProps {
 - Click navigation to detail
 - Reuses GaugeChart component
 - Filters out TEMPORARY tablespaces
+- Sorts by allocated usage (desc), shows only the top `initialCount` with a
+  "Show all (N)" / "Show less" toggle
+- Arc shows allocated `pctUsed`; color and the "vs max X%" caption use the
+  autoextend-aware `pctUsedMax`
 
 ---
 

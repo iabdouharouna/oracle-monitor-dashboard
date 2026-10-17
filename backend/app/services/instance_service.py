@@ -113,22 +113,23 @@ class InstanceService:
 
     @staticmethod
     async def get_storage() -> Dict[str, Any]:
-        tablespaces = await StorageService.get_tablespaces_raw()
+        tablespaces = await StorageService.get_tablespaces()
         redo_logs = await oracle_pool.execute_query(REDO_LOGS)
         archive_rows = await oracle_pool.execute_query(ARCHIVE_LOG_RATE)
         
         return {
             "tablespaces": [
                 {
-                    "name": ts.get("tablespace_name"),
-                    "type": ts.get("contents"),
-                    "status": ts.get("status"),
-                    "size_mb": ts.get("size_mb", 0),
-                    "used_mb": ts.get("used_mb", 0),
-                    "free_mb": ts.get("free_mb", 0),
-                    "pct_used": ts.get("pct_used", 0),
-                    "autoextensible": ts.get("autoextensible") == "YES",
-                    "max_size_mb": ts.get("max_size_mb") if ts.get("max_size_mb", 0) > 0 else None,
+                    "name": ts["name"],
+                    "type": ts["type"],
+                    "status": ts["status"],
+                    "size_mb": ts["sizeMB"],
+                    "used_mb": ts["usedMB"],
+                    "free_mb": ts["freeMB"],
+                    "pct_used": ts["pctUsed"],
+                    "pct_used_max": ts["pctUsedMax"],
+                    "autoextensible": ts["autoextensible"],
+                    "max_size_mb": ts["maxSizeMB"],
                 }
                 for ts in tablespaces
             ],

@@ -144,8 +144,9 @@ export interface TablespaceInfo {
   usedMB: number;
   freeMB: number;
   pctUsed: number;
+  pctUsedMax: number;
   autoextensible: boolean;
-  maxSizeMB: number | null;
+  maxSizeMB: number;
 }
 
 export interface RedoLogInfo {

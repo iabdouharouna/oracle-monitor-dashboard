@@ -160,11 +160,15 @@ export const Dashboard: React.FC = () => {
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
               {tablespaces
               ?.filter(t => t.type !== 'TEMPORARY')
+              .sort((a, b) => b.pctUsed - a.pctUsed)
+              .slice(0, 8)
               .map(ts => (
                 <GaugeChart
                   key={ts.name}
                   value={ts.pctUsed}
+                  colorValue={ts.pctUsedMax}
                   label={ts.name}
+                  subLabel={`vs max ${ts.pctUsedMax < 0.1 && ts.pctUsedMax > 0 ? '<0.1' : ts.pctUsedMax.toFixed(1)}%`}
                   size={150}
                 />
               ))}

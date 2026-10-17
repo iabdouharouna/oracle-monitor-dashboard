@@ -230,39 +230,65 @@ FROM v$librarycache
 ---
 
 ### 9. Tablespaces
-**Vue :** `dba_tablespaces`, `dba_tablespace_usage_metrics`, `dba_data_files`, `dba_free_space`
+**Vue :** `dba_tablespaces`, `dba_tablespace_usage_metrics`, `dba_data_files`, `dba_temp_files`, `dba_free_space`
 
 ```sql
--- Primary query: sizes and usage come from dba_tablespace_usage_metrics (fast,
--- pre-aggregated). Autoextend/max size still come from dba_data_files.
+-- La taille allouée, le flag autoextend et la capacité max viennent des datafiles
+-- (union de dba_data_files et dba_temp_files : un tablespace utilise l'un ou
+-- l'autre). L'espace utilisé vient de dba_tablespace_usage_metrics.used_percent,
+-- le ratio used_space / tablespace_size pré-calculé (rapide, sans scan de
+-- dba_free_space).
+--
+-- ATTENTION : dans dba_tablespace_usage_metrics, used_space et tablespace_size
+-- sont exprimés en BLOCS (pas en octets) et tablespace_size est le PLAFOND
+-- autoextend (MAXBYTES), pas la taille allouée. Ne PAS les diviser par 1024*1024 ;
+-- utiliser le ratio sans unité used_percent et le multiplier par la capacité max.
 SELECT
     t.tablespace_name,
     t.contents,
     t.status,
-    ROUND(NVL(m.tablespace_size, 0) / 1024 / 1024, 2) as size_mb,
-    ROUND(NVL(m.used_space, 0) / 1024 / 1024, 2) as used_mb,
-    ROUND((NVL(m.tablespace_size, 0) - NVL(m.used_space, 0)) / 1024 / 1024, 2) as free_mb,
-    ROUND(NVL(m.used_percent, 0), 1) as pct_used,
-    NVL(a.autoextensible, 'NO') as autoextensible,
-    ROUND(NVL(a.maxbytes, 0) / 1024 / 1024, 2) as max_size_mb,
+    ROUND(NVL(f.alloc_bytes, 0) / 1024 / 1024, 2) as size_mb,
+    ROUND(NVL(m.used_percent, 0) / 100 * NVL(f.max_bytes, 0) / 1024 / 1024, 2) as used_mb,
+    ROUND(
+        (NVL(f.alloc_bytes, 0)
+         - NVL(m.used_percent, 0) / 100 * NVL(f.max_bytes, 0)) / 1024 / 1024, 2
+    ) as free_mb,
+    ROUND(NVL(m.used_percent, 0), 2) as pct_used,
+    NVL(f.autoextensible, 'NO') as autoextensible,
+    ROUND(NVL(f.max_bytes, NVL(f.alloc_bytes, 0)) / 1024 / 1024, 2) as max_size_mb,
     CASE WHEN m.tablespace_name IS NULL THEN 1 ELSE 0 END as legacy_fallback
 FROM dba_tablespaces t
 LEFT JOIN dba_tablespace_usage_metrics m
     ON m.tablespace_name = t.tablespace_name
 LEFT JOIN (
     SELECT tablespace_name,
+           SUM(bytes) as alloc_bytes,
            MAX(autoextensible) as autoextensible,
-           MAX(maxbytes) as maxbytes
-    FROM dba_data_files
+           SUM(
+               CASE WHEN autoextensible = 'YES'
+                    THEN GREATEST(maxbytes, bytes)
+                    ELSE bytes
+               END
+           ) as max_bytes
+    FROM (
+        SELECT tablespace_name, bytes, autoextensible, maxbytes FROM dba_data_files
+        UNION ALL
+        SELECT tablespace_name, bytes, autoextensible, maxbytes FROM dba_temp_files
+    )
     GROUP BY tablespace_name
-) a ON a.tablespace_name = t.tablespace_name
+) f ON f.tablespace_name = t.tablespace_name
 ```
+
+La capacité max par tablespace = somme du plafond de chaque datafile : `MAXBYTES`
+si autoextensible, `BYTES` courant sinon.
 
 Certains tablespaces (notamment les UNDO inactifs) sont absents de
 `dba_tablespace_usage_metrics`. Quand `legacy_fallback = 1`, le service lance une
 seconde requête ciblée pour ce tablespace. Le bind `:name` permet à Oracle de
 pousser le prédicat dans `dba_free_space` (~0,02 s) ; un `IN (subquery)` force au
-contraire un scan complet (7 s+).
+contraire un scan complet (7 s+). La requête de secours renvoie aussi
+`autoextensible` et `max_size_mb` (même formule de capacité) pour calculer
+l'usage autoextend-aware.
 
 ```sql
 -- Fallback query, run once per tablespace with legacy_fallback = 1
@@ -272,7 +298,16 @@ SELECT
     ROUND(SUM(NVL(f.bytes, 0)) / 1024 / 1024, 2) as free_mb,
     ROUND(
         100 * SUM(NVL(d.bytes, 0) - NVL(f.bytes, 0)) / NULLIF(SUM(d.bytes), 0), 1
-    ) as pct_used
+    ) as pct_used,
+    NVL(MAX(d.autoextensible), 'NO') as autoextensible,
+    ROUND(
+        SUM(
+            CASE WHEN d.autoextensible = 'YES'
+                 THEN GREATEST(d.maxbytes, d.bytes)
+                 ELSE NVL(d.bytes, 0)
+            END
+        ) / 1024 / 1024, 2
+    ) as max_size_mb
 FROM dba_tablespaces t
 LEFT JOIN dba_data_files d
     ON t.tablespace_name = d.tablespace_name
@@ -285,6 +320,15 @@ LEFT JOIN (
 WHERE t.tablespace_name = :name
 GROUP BY t.tablespace_name
 ```
+
+`StorageService.get_tablespaces()` dérive deux ratios d'usage de ces lignes :
+`pctUsed` = `used_mb / size_mb` (remplissage de l'*allocation courante*) et
+`pctUsedMax` = `used_mb / max(max_size_mb, size_mb)` (remplissage maximal
+possible, autoextend-aware). Pour un tablespace non autoextensible, `max_size_mb`
+égale `size_mb` et les deux ratios sont identiques. Les alertes et le KPI
+« tablespaces critiques » de l'overview utilisent `pctUsedMax` : un tablespace
+autoextensible n'est donc pas signalé tant qu'il dispose encore de marge de
+croissance.
 
 ---
 
