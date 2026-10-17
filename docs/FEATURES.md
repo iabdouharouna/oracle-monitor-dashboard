@@ -253,7 +253,7 @@ are `"sid,serial"` strings), then clears the selection.
 #### Permanent/Undo Tablespaces
 **API:** `GET /storage/tablespaces`  
 **Data:** Name, Type, Status, Usage bar (% Used vs % Max), Used/Size/Max MB, Autoextend  
-**Sorting:** by allocated usage (% Used), descending  
+**Sorting:** by autoextend-aware usage (% Max), descending  
 **Pagination:** 10 rows per page (10/25/50/100)  
 **Actions:** Click row → Detail panel (rendered below the tables, for any tab)
 

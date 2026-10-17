@@ -253,7 +253,7 @@ sélection sont des chaînes `"sid,serial"`), puis efface la sélection.
 #### Tablespaces permanents/undo
 **API :** `GET /storage/tablespaces`
 **Données :** Nom, Type, État, Barre d'usage (% Utilisé vs % Max), Utilisé/Taille/Max Mo, Autoextend
-**Tri :** par usage alloué (% Utilisé), décroissant
+**Tri :** par usage autoextend-aware (% Max), décroissant
 **Pagination :** 10 lignes par page (10/25/50/100)
 **Actions :** Cliquer sur une ligne → Panneau de détails (affiché sous les tableaux, quel que soit l'onglet)
 
