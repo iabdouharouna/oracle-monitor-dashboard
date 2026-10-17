@@ -100,33 +100,46 @@ SELECT
     t.tablespace_name,
     t.contents,
     t.status,
-    ROUND(NVL(m.tablespace_size, 0) / 1024 / 1024, 2) as size_mb,
-    ROUND(NVL(m.used_space, 0) / 1024 / 1024, 2) as used_mb,
-    ROUND((NVL(m.tablespace_size, 0) - NVL(m.used_space, 0)) / 1024 / 1024, 2) as free_mb,
-    ROUND(NVL(m.used_percent, 0), 1) as pct_used,
-    NVL(a.autoextensible, 'NO') as autoextensible,
-    -- Max capacity: autoextensible datafiles grow up to MAXBYTES, others are
-    -- capped at their current size. Summing per-file capacities gives the real
-    -- tablespace ceiling used for the autoextend-aware usage percentage.
+    ROUND(NVL(f.alloc_bytes, 0) / 1024 / 1024, 2) as size_mb,
+    -- dba_tablespace_usage_metrics.used_percent is used_space / tablespace_size
+    -- where tablespace_size is the autoextend ceiling (MAXBYTES), NOT the
+    -- allocated size, and used_space/tablespace_size are expressed in BLOCKS.
+    -- Multiplying the ratio by the summed per-file capacity yields the used
+    -- size in bytes without any block-size assumption and stays fast.
+    ROUND(NVL(m.used_percent, 0) / 100 * NVL(f.max_bytes, 0) / 1024 / 1024, 2) as used_mb,
     ROUND(
-        NVL(a.maxbytes, NVL(m.tablespace_size, 0)) / 1024 / 1024, 2
-    ) as max_size_mb,
+        (NVL(f.alloc_bytes, 0)
+         - NVL(m.used_percent, 0) / 100 * NVL(f.max_bytes, 0)) / 1024 / 1024, 2
+    ) as free_mb,
+    ROUND(
+        100 * NVL(m.used_percent, 0) / 100 * NVL(f.max_bytes, 0)
+        / NULLIF(f.alloc_bytes, 0), 1
+    ) as pct_used,
+    NVL(f.autoextensible, 'NO') as autoextensible,
+    -- Max capacity: autoextensible files grow up to MAXBYTES, others are capped
+    -- at their current size. Summing per-file capacities gives the real ceiling.
+    ROUND(NVL(f.max_bytes, NVL(f.alloc_bytes, 0)) / 1024 / 1024, 2) as max_size_mb,
     CASE WHEN m.tablespace_name IS NULL THEN 1 ELSE 0 END as legacy_fallback
 FROM dba_tablespaces t
 LEFT JOIN dba_tablespace_usage_metrics m
     ON m.tablespace_name = t.tablespace_name
 LEFT JOIN (
     SELECT tablespace_name,
+           SUM(bytes) as alloc_bytes,
            MAX(autoextensible) as autoextensible,
            SUM(
                CASE WHEN autoextensible = 'YES'
                     THEN GREATEST(maxbytes, bytes)
                     ELSE bytes
                END
-           ) as maxbytes
-    FROM dba_data_files
+           ) as max_bytes
+    FROM (
+        SELECT tablespace_name, bytes, autoextensible, maxbytes FROM dba_data_files
+        UNION ALL
+        SELECT tablespace_name, bytes, autoextensible, maxbytes FROM dba_temp_files
+    )
     GROUP BY tablespace_name
-) a ON a.tablespace_name = t.tablespace_name
+) f ON f.tablespace_name = t.tablespace_name
 """
 
 # Used only for tablespaces absent from dba_tablespace_usage_metrics (e.g. inactive
